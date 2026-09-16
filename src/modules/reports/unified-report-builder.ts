@@ -12,6 +12,7 @@
 import { reportReadRepository } from './report-read-repository'
 import { db } from '@/lib/db'
 import { normalizeStatus, isActiveStatus } from '@/lib/status-utils'
+import { demoFilter, type DemoAwareUser } from '@/lib/demo-mode'
 
 export type ReportGroup =
   | 'devices'
@@ -31,14 +32,31 @@ export const VALID_GROUPS: ReportGroup[] = [
 ]
 
 // ── Helpers ────────────────────────────────────────────
-export function parseMonth(monthStr: string | null): { start: string; end: string; label: string } | null {
+// BUGFIX (QA-ROUND-2026-09-16-C): `lang` was referenced but never defined in
+// this module → ReferenceError: lang is not defined → /api/reports/unified
+// ?group=meters and ?group=maintenance returned {"error":"lang is not defined"}.
+// Now an explicit parameter threaded from each builder (defaults to 'th').
+export type ReportLang = 'th' | 'en'
+const localeOf = (lang: ReportLang) => (lang === 'th' ? 'th-TH' : 'en-GB')
+
+// QA-ROUND-2026-09-16-C: demo isolation for unified reports — previously the
+// builders saw ALL rows, so real users (admin) got demo rows mixed into the
+// devices/workorders/stock summaries (e.g. total 20 instead of 12).
+function demoW(user?: DemoAwareUser | null): Record<string, unknown> {
+  return user ? demoFilter(user) : {}
+}
+
+export function parseMonth(
+  monthStr: string | null,
+  lang: ReportLang = 'th',
+): { start: string; end: string; label: string } | null {
   if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) return null
   const [y, m] = monthStr.split('-').map(Number)
   if (!y || !m || m < 1 || m > 12) return null
   const start = `${monthStr}-01`
   const lastDay = new Date(y, m, 0).getDate()
   const end = `${monthStr}-${String(lastDay).padStart(2, '0')}`
-  const label = new Date(y, m - 1, 1).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
+  const label = new Date(y, m - 1, 1).toLocaleDateString(localeOf(lang), {
     month: 'long',
     year: 'numeric',
   })
@@ -82,8 +100,8 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
 
 // ── Group builders ────────────────────────────────────
 
-export async function buildDevicesReport(siteCodes: string[] | null) {
-  const where: Record<string, unknown> = {}
+export async function buildDevicesReport(siteCodes: string[] | null, user?: DemoAwareUser | null) {
+  const where: Record<string, unknown> = { ...demoW(user) }
   if (siteCodes !== null) where.site = { in: siteCodes }
 
   const devices = await db.device.findMany({
@@ -245,8 +263,11 @@ export async function buildDevicesReport(siteCodes: string[] | null) {
     .sort((a, b) => b.accumulatedDepreciation - a.accumulatedDepreciation)
     .slice(0, 100)
 
+  // BUGFIX (QA-ROUND-2026-09-16-C): purchasePrice is a Prisma Decimal —
+  // Decimal + number returned a Decimal-like object whose .toFixed chain
+  // produced "totalPurchaseValue.toFixed is not a function". Convert first.
   const totalPurchaseValue = devices.reduce(
-    (s, d) => s + (d.purchasePrice ?? 0),
+    (s, d) => s + Number(d.purchasePrice ?? 0),
     0,
   )
   const totalBookValue = depreciation.reduce((s, d) => s + d.bookValue, 0)
@@ -281,12 +302,17 @@ export async function buildDevicesReport(siteCodes: string[] | null) {
   }
 }
 
-export async function buildMetersReport(month: string, siteCodes: string[] | null) {
+export async function buildMetersReport(
+  month: string,
+  siteCodes: string[] | null,
+  lang: ReportLang = 'th',
+  user?: DemoAwareUser | null,
+) {
   const monthInfo = parseMonth(month)!
   const previousMonth = previousMonthStr(month)
 
   // Current month readings
-  const deviceWhere: Record<string, unknown> = {}
+  const deviceWhere: Record<string, unknown> = { ...demoW(user) }
   if (siteCodes !== null) deviceWhere.site = { in: siteCodes }
 
   const devices = await db.device.findMany({
@@ -493,7 +519,7 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
   const monthlyComparison = [
     {
       month: previousMonth,
-      label: new Date(previousMonth + '-01').toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
+      label: new Date(previousMonth + '-01').toLocaleDateString(localeOf(lang), {
         month: 'short',
         year: 'numeric',
       }),
@@ -557,13 +583,22 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
   }
 }
 
-export async function buildWorkOrdersReport(month: string, siteCodes: string[] | null) {
+export async function buildWorkOrdersReport(
+  month: string,
+  siteCodes: string[] | null,
+  user?: DemoAwareUser | null,
+) {
   const monthInfo = parseMonth(month)!
 
+  // BUGFIX (QA-ROUND-2026-09-16-C): passing JS Date objects to Prisma filter
+  // args breaks under the Bun runtime (Prisma 6.19 mis-detects the Date as a
+  // field-ref object → "Argument `_ref` is missing"). ISO strings are valid
+  // DateTime filter inputs and work in both Node and Bun.
   const where: Record<string, unknown> = {
+    ...demoW(user),
     createdAt: {
-      gte: new Date(monthInfo.start + 'T00:00:00'),
-      lte: new Date(monthInfo.end + 'T23:59:59'),
+      gte: monthInfo.start + 'T00:00:00Z',
+      lte: monthInfo.end + 'T23:59:59Z',
     },
   }
   // Apply Site scope via siteCode OR device.site (legacy rows where
@@ -712,8 +747,8 @@ export async function buildWorkOrdersReport(month: string, siteCodes: string[] |
   }
 }
 
-export async function buildStockReport(siteCodes: string[] | null) {
-  const itemWhere: Record<string, unknown> = {}
+export async function buildStockReport(siteCodes: string[] | null, user?: DemoAwareUser | null) {
+  const itemWhere: Record<string, unknown> = { ...demoW(user) }
   if (siteCodes !== null) itemWhere.site = { in: siteCodes }
 
   const items = await db.stockItem.findMany({
@@ -776,6 +811,7 @@ export async function buildStockReport(siteCodes: string[] | null) {
     .toISOString()
     .slice(0, 10)
   const txnWhere: Record<string, unknown> = {
+    ...demoW(user),
     txnDate: { gte: thirtyDaysAgo },
   }
   if (siteCodes !== null) {
@@ -822,7 +858,7 @@ export async function buildStockReport(siteCodes: string[] | null) {
 
   // pending approvals — scoped via canonical stockItem.site predicate
   // (see comment above on the recentTxns filter).
-  const pendingWhere: Record<string, unknown> = { approvalStatus: 'PENDING' }
+  const pendingWhere: Record<string, unknown> = { ...demoW(user), approvalStatus: 'PENDING' }
   if (siteCodes !== null) {
     pendingWhere.stockItem = { site: { in: siteCodes } }
   }
@@ -877,11 +913,16 @@ export async function buildStockReport(siteCodes: string[] | null) {
   }
 }
 
-export async function buildMaintenanceReport(month: string, siteCodes: string[] | null) {
+export async function buildMaintenanceReport(
+  month: string,
+  siteCodes: string[] | null,
+  lang: ReportLang = 'th',
+  user?: DemoAwareUser | null,
+) {
   const monthInfo = parseMonth(month)!
 
   // Maintenance logs (all-time, but filter for cost analysis)
-  const deviceWhere: Record<string, unknown> = {}
+  const deviceWhere: Record<string, unknown> = { ...demoW(user) }
   if (siteCodes !== null) deviceWhere.site = { in: siteCodes }
 
   const devices = await db.device.findMany({
@@ -960,7 +1001,7 @@ export async function buildMaintenanceReport(month: string, siteCodes: string[] 
   }
   const costByMonth = monthBuckets.map((b) => ({
     month: b.month,
-    label: new Date(b.month + '-01').toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
+    label: new Date(b.month + '-01').toLocaleDateString(localeOf(lang), {
       month: 'short',
       year: 'numeric',
     }),
@@ -991,6 +1032,7 @@ export async function buildMaintenanceReport(month: string, siteCodes: string[] 
   // buildStockReport's recentTxns). When siteCodes is null (superadmin
   // all-sites), no Site filter is applied.
   const partTxnsWhere: Record<string, unknown> = {
+    ...demoW(user),
     type: 'OUT',
     workOrderNo: { not: null },
   }
@@ -1061,14 +1103,18 @@ export async function buildMaintenanceReport(month: string, siteCodes: string[] 
   }
 }
 
-export async function buildApprovalsReport(month: string, siteCodes: string[] | null) {
+export async function buildApprovalsReport(
+  month: string,
+  siteCodes: string[] | null,
+  user?: DemoAwareUser | null,
+) {
   const monthInfo = parseMonth(month)!
 
   // Pending stock approvals — scoped via canonical stockItem.site
   // predicate. (StockTransaction has no direct site FK, but it has a
   // required `stockItem` relation whose `site` field is the canonical
   // Site of the transaction.)
-  const pendingStockWhere: Record<string, unknown> = { approvalStatus: 'PENDING' }
+  const pendingStockWhere: Record<string, unknown> = { ...demoW(user), approvalStatus: 'PENDING' }
   if (siteCodes !== null) {
     pendingStockWhere.stockItem = { site: { in: siteCodes } }
   }
@@ -1094,9 +1140,12 @@ export async function buildApprovalsReport(month: string, siteCodes: string[] | 
 
   // Approved/rejected in current month — scoped via canonical
   // stockItem.site predicate (same pattern as pendingStock above).
-  const monthStart = new Date(monthInfo.start + 'T00:00:00')
-  const monthEnd = new Date(monthInfo.end + 'T23:59:59')
+  // (QA-ROUND-2026-09-16-C) ISO strings instead of Date objects — see the
+  // Bun/Prisma filter note in buildWorkOrdersReport above.
+  const monthStart = monthInfo.start + 'T00:00:00Z'
+  const monthEnd = monthInfo.end + 'T23:59:59Z'
   const approvedTxnsWhere: Record<string, unknown> = {
+    ...demoW(user),
     approvalStatus: { in: ['APPROVED', 'REJECTED'] },
     approvedAt: { gte: monthInfo.start, lte: monthInfo.end },
   }
@@ -1123,6 +1172,7 @@ export async function buildApprovalsReport(month: string, siteCodes: string[] | 
 
   // Pending work orders (status PENDING or WAITING_PARTS)
   const woWhere: Record<string, unknown> = {
+    ...demoW(user),
     status: { in: ['PENDING', 'WAITING_PARTS'] },
   }
   if (siteCodes !== null) {
@@ -1149,6 +1199,7 @@ export async function buildApprovalsReport(month: string, siteCodes: string[] | 
 
   // Special fee cases in current month — also scoped by Site
   const specialFeeWhere: Record<string, unknown> = {
+    ...demoW(user),
     isSpecialFee: true,
     createdAt: { gte: monthStart, lte: monthEnd },
   }
@@ -1187,6 +1238,7 @@ export async function buildApprovalsReport(month: string, siteCodes: string[] | 
     'GRANT_DELETE',
   ]
   const approvalHistoryWhere: Record<string, unknown> = {
+    ...demoW(user),
     action: { in: APPROVAL_ACTIONS },
     createdAt: { gte: monthStart, lte: monthEnd },
   }

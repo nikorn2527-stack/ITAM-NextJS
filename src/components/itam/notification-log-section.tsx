@@ -117,7 +117,6 @@ function channelDotClass(ch: string): string {
 // ── Utilities ─────────────────────────────────────────────────
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = { ...extra }
-  const { lang } = useLang()
   const t = useAuthStore.getState()?.token
   if (t) h['Authorization'] = `Bearer ${t}`
   return h

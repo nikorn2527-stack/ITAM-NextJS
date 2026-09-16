@@ -29,9 +29,9 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Legend,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import {
   Card,
   CardContent,
@@ -1956,7 +1956,7 @@ export function MonthlyReport() {
                 </CardHeader>
                 <CardContent>
                   <div className="h-64 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <VisibleResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
                           data={Object.entries(wo.byStatus)
@@ -1994,7 +1994,7 @@ export function MonthlyReport() {
                           }}
                         />
                       </PieChart>
-                    </ResponsiveContainer>
+                    </VisibleResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
@@ -2007,7 +2007,7 @@ export function MonthlyReport() {
                 </CardHeader>
                 <CardContent>
                   <div className="h-64 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <VisibleResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={Object.entries(wo.byPriority).map(
                           ([k, v]) => ({ name: k, value: v, key: k }),
@@ -2044,7 +2044,7 @@ export function MonthlyReport() {
                           ))}
                         </Bar>
                       </BarChart>
-                    </ResponsiveContainer>
+                    </VisibleResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
@@ -2060,7 +2060,7 @@ export function MonthlyReport() {
                     <EmptyHint label="No dataSubjectinmonths" />
                   ) : (
                     <div className="h-64 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <VisibleResponsiveContainer width="100%" height="100%">
                         <BarChart
                           layout="vertical"
                           data={wo.bySubject}
@@ -2105,7 +2105,7 @@ export function MonthlyReport() {
                             radius={[0, 6, 6, 0]}
                           />
                         </BarChart>
-                      </ResponsiveContainer>
+                      </VisibleResponsiveContainer>
                     </div>
                   )}
                 </CardContent>
@@ -2122,7 +2122,7 @@ export function MonthlyReport() {
                     <EmptyHint label="No dataAssigninmonths" />
                   ) : (
                     <div className="h-64 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <VisibleResponsiveContainer width="100%" height="100%">
                         <BarChart
                           data={wo.byStaff.slice(0, 10)}
                           margin={{
@@ -2170,7 +2170,7 @@ export function MonthlyReport() {
                             radius={[6, 6, 0, 0]}
                           />
                         </BarChart>
-                      </ResponsiveContainer>
+                      </VisibleResponsiveContainer>
                     </div>
                   )}
                 </CardContent>
@@ -2354,7 +2354,7 @@ export function MonthlyReport() {
               <CardContent>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="h-56 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <VisibleResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
                           data={Object.entries(devices.byStatus).map(
@@ -2390,7 +2390,7 @@ export function MonthlyReport() {
                           }}
                         />
                       </PieChart>
-                    </ResponsiveContainer>
+                    </VisibleResponsiveContainer>
                   </div>
                   <div className="rounded-md border">
                     <Table>

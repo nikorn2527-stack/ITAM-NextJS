@@ -1,8 +1,9 @@
 'use client'
 
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import { Badge } from '@/components/ui/badge'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -42,7 +43,7 @@ export function MetersReport({ data, isDark }: { data: any; isDark: boolean }) {
         }
       >
         <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+          <VisibleResponsiveContainer width="100%" height="100%">
             <BarChart data={data.monthlyComparison} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={cs.gridColor} />
               <XAxis dataKey="label" tick={{ fill: cs.textColor, fontSize: 12 }} />
@@ -52,14 +53,14 @@ export function MetersReport({ data, isDark }: { data: any; isDark: boolean }) {
               <Bar dataKey="bw" name="ขาวดำ" stackId="a" fill="#475569" />
               <Bar dataKey="color" name="สี" stackId="a" fill="#f97316" radius={[6, 6, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
+          </VisibleResponsiveContainer>
         </div>
       </SectionCard>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <SectionCard title="ค่าใช้จ่ายต่อสาขา" icon={<Building2 className="h-4 w-4" />} accent="#f97316">
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <VisibleResponsiveContainer width="100%" height="100%">
               <BarChart data={data.costBySite} layout="vertical" margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={cs.gridColor} horizontal={false} />
                 <XAxis type="number" tick={{ fill: cs.textColor, fontSize: 11 }} />
@@ -67,7 +68,7 @@ export function MetersReport({ data, isDark }: { data: any; isDark: boolean }) {
                 <Tooltip cursor={{ fill: cs.cursorFill }} contentStyle={cs.tooltipStyle} formatter={(v: number) => formatBaht(v)} />
                 <Bar dataKey="cost" name="ค่าใช้จ่าย" radius={[0, 6, 6, 0]} fill="#f97316" />
               </BarChart>
-            </ResponsiveContainer>
+            </VisibleResponsiveContainer>
           </div>
         </SectionCard>
 

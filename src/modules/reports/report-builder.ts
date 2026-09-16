@@ -228,14 +228,16 @@ async function buildAuditReport(rangeKey: RangeKey) {
   // AuditLog stores createdAt as DateTime — apply range as date-gte/lte on
   // ISO date strings (works for SQLite when Prisma converts).
   if (range.start && range.end) {
+    // (QA-ROUND-2026-09-16-C) ISO strings, not Date objects — Date instances
+    // in Prisma filter args break under Bun ("Argument `_ref` is missing").
     where.createdAt = {
-      gte: new Date(range.start + 'T00:00:00'),
-      lte: new Date(range.end + 'T23:59:59'),
+      gte: range.start + 'T00:00:00Z',
+      lte: range.end + 'T23:59:59Z',
     }
   } else if (range.start) {
-    where.createdAt = { gte: new Date(range.start + 'T00:00:00') }
+    where.createdAt = { gte: range.start + 'T00:00:00Z' }
   } else if (range.end) {
-    where.createdAt = { lte: new Date(range.end + 'T23:59:59') }
+    where.createdAt = { lte: range.end + 'T23:59:59Z' }
   }
 
   const logs = await db.auditLog.findMany({

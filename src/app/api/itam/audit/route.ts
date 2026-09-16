@@ -50,12 +50,13 @@ export async function GET(req: NextRequest) {
       })
     }
     if (startDate) {
-      andClauses.push({ createdAt: { gte: new Date(startDate) } })
+      // (QA-ROUND-2026-09-16-C) ISO strings, not Date objects — Date
+      // instances in Prisma filter args break under Bun ("_ref missing").
+      andClauses.push({ createdAt: { gte: startDate + 'T00:00:00.000Z' } })
     }
     if (endDate) {
       // Include the entire end day (≤ end-of-day)
-      const end = new Date(endDate + 'T23:59:59.999Z')
-      andClauses.push({ createdAt: { lte: end } })
+      andClauses.push({ createdAt: { lte: endDate + 'T23:59:59.999Z' } })
     }
 
     const where: Record<string, unknown> =

@@ -254,13 +254,23 @@ export async function GET(req: NextRequest) {
       deviceCount: number
       activeCount: number
       paperSheets: number
+      paperBw: number
+      paperColor: number
+      paperCost: number
     }
     let bySite: SiteStat[] = []
 
     if (visibleSiteNames.length > 0) {
       // Site-level filter that ALSO carries the demo-filter (isDemo flag)
       // so demo users see ONLY demo devices, real users see ONLY real data.
-      const siteWhere = { ...siteFilter, site: { in: visibleSiteNames } }
+      // QA-ROUND-2026-09-16-C: Device.site may store EITHER the site CODE
+      // (e.g. "UDH") or the site NAME (e.g. "โรงพยาบาลศูนย์อุดรธานี") depending
+      // on the data source. Match both forms (same approach as paper-analytics
+      // rate lookups) so no devices/readings fall through the join.
+      const siteKeys = [
+        ...new Set(visibleSites.flatMap((s) => [s.SiteName || '', s.SiteCode || '']).filter(Boolean)),
+      ]
+      const siteWhere = { ...siteFilter, site: { in: siteKeys } }
       const [deviceBySite, activeBySite, devicesForSiteMap, paperByAsset] = await Promise.all([
         // All devices grouped by site
         db.device.groupBy({
@@ -299,24 +309,41 @@ export async function GET(req: NextRequest) {
       const assetToSite = new Map<string, string>()
       for (const d of devicesForSiteMap) assetToSite.set(d.assetCode, d.site || '')
 
-      // Sum paper per site by mapping each asset's paper to its site
+      // Sum paper per site by mapping each asset's paper to its site.
+      // QA-ROUND-2026-09-16-C: also keep BW/color split per site so the
+      // dashboard can show money (paper cost) using each site's OWN rate —
+      // same single-source-of-truth as paper-analytics (CONSULTING-007).
       const sitePaperMap: Record<string, number> = {}
+      const siteBwMap: Record<string, number> = {}
+      const siteColorMap: Record<string, number> = {}
       for (const r of paperByAsset) {
         const site = assetToSite.get(r.assetCode || '') || ''
         if (site) {
-          sitePaperMap[site] =
-            (sitePaperMap[site] || 0) + (r._sum.pagesBw ?? 0) + (r._sum.pagesColor ?? 0)
+          const bw = r._sum.pagesBw ?? 0
+          const color = r._sum.pagesColor ?? 0
+          sitePaperMap[site] = (sitePaperMap[site] || 0) + bw + color
+          siteBwMap[site] = (siteBwMap[site] || 0) + bw
+          siteColorMap[site] = (siteColorMap[site] || 0) + color
         }
       }
 
       bySite = visibleSites.map((s) => {
         const siteName = s.SiteName || ''
+        const siteCode = s.SiteCode || ''
+        // Devices may be keyed under the site's NAME or its CODE — sum both.
+        const bw = (siteBwMap[siteName] || 0) + (siteBwMap[siteCode] || 0)
+        const color = (siteColorMap[siteName] || 0) + (siteColorMap[siteCode] || 0)
+        const rateBw = s.PaperRateBW == null ? 0.5 : Number(s.PaperRateBW)
+        const rateColor = s.PaperRateColor == null ? 2.0 : Number(s.PaperRateColor)
         return {
           siteCode: s.SiteCode,
           siteName,
-          deviceCount: deviceCountMap[siteName] || 0,
-          activeCount: activeCountMap[siteName] || 0,
-          paperSheets: sitePaperMap[siteName] || 0,
+          deviceCount: (deviceCountMap[siteName] || 0) + (deviceCountMap[siteCode] || 0),
+          activeCount: (activeCountMap[siteName] || 0) + (activeCountMap[siteCode] || 0),
+          paperSheets: (sitePaperMap[siteName] || 0) + (sitePaperMap[siteCode] || 0),
+          paperBw: bw,
+          paperColor: color,
+          paperCost: Math.round((bw * rateBw + color * rateColor) * 100) / 100,
         }
       })
     }

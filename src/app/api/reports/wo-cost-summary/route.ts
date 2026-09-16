@@ -53,9 +53,11 @@ export async function GET(req: NextRequest) {
     // Pull WOs in range
     const wos = await db.workOrder.findMany({
       where: {
+        // (QA-ROUND-2026-09-16-C) ISO strings, not Date objects — Date
+        // instances in Prisma filter args break under Bun runtime.
         createdAt: {
-          gte: new Date(fromDate + 'T00:00:00Z'),
-          lte: new Date(toDate + 'T23:59:59Z'),
+          gte: fromDate + 'T00:00:00Z',
+          lte: toDate + 'T23:59:59Z',
         },
         isDemo: false,
         ...(hasSiteFilter || siteParam ? siteWhere : {}),

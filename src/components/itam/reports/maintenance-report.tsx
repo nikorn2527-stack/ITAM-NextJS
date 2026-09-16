@@ -1,8 +1,9 @@
 'use client'
 
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import { Badge } from '@/components/ui/badge'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -29,7 +30,7 @@ export function MaintenanceReport({ data, isDark }: { data: any; isDark: boolean
 
       <SectionCard title="ค่าซ่อม 6 เดือนล่าสุด" icon={<TrendingUp className="h-4 w-4" />} accent="#10b981">
         <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+          <VisibleResponsiveContainer width="100%" height="100%">
             <LineChart data={data.costByMonth} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={cs.gridColor} />
               <XAxis dataKey="label" tick={{ fill: cs.textColor, fontSize: 11 }} />
@@ -37,7 +38,7 @@ export function MaintenanceReport({ data, isDark }: { data: any; isDark: boolean
               <Tooltip contentStyle={cs.tooltipStyle} formatter={(v: number) => formatBaht(v)} />
               <Line type="monotone" dataKey="cost" name="ค่าซ่อม" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981', r: 4 }} />
             </LineChart>
-          </ResponsiveContainer>
+          </VisibleResponsiveContainer>
         </div>
       </SectionCard>
 

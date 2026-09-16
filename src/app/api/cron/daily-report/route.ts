@@ -79,6 +79,11 @@ export async function GET(req: NextRequest) {
     const yesterdayEnd = new Date(yesterdayStart)
     yesterdayEnd.setUTCHours(23, 59, 59, 999)
 
+    // (QA-ROUND-2026-09-16-C) Prisma filter args get ISO STRINGS, not Date
+    // objects — Date instances break under the Bun runtime ("_ref missing").
+    const yesterdayStartIso = yesterdayStart.toISOString()
+    const yesterdayEndIso = yesterdayEnd.toISOString()
+
     const dateStr = yesterdayStart.toISOString().slice(0, 10)
 
     // Run all queries in parallel
@@ -101,15 +106,15 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       // Work Orders created yesterday
       db.workOrder.count({
-        where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
+        where: { createdAt: { gte: yesterdayStartIso, lte: yesterdayEndIso } },
       }),
       // Work Orders completed yesterday
       db.workOrder.count({
-        where: { closedAt: { gte: yesterdayStart, lte: yesterdayEnd } },
+        where: { closedAt: { gte: yesterdayStartIso, lte: yesterdayEndIso } },
       }),
       // Work Orders cancelled yesterday
       db.workOrder.count({
-        where: { canceledAt: { gte: yesterdayStart, lte: yesterdayEnd } },
+        where: { canceledAt: { gte: yesterdayStartIso, lte: yesterdayEndIso } },
       }),
       // Total pending WOs (still open)
       db.workOrder.count({
@@ -117,11 +122,11 @@ export async function GET(req: NextRequest) {
       }),
       // Meter readings yesterday
       db.meterReading.count({
-        where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
+        where: { createdAt: { gte: yesterdayStartIso, lte: yesterdayEndIso } },
       }),
       // Stock transactions yesterday
       db.stockTransaction.count({
-        where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
+        where: { createdAt: { gte: yesterdayStartIso, lte: yesterdayEndIso } },
       }),
       // Low-stock items (quantity <= minQuantity)
       // Use raw SQL because Prisma doesn't support column-to-column comparison.
@@ -130,25 +135,30 @@ export async function GET(req: NextRequest) {
       db.$queryRaw`SELECT CAST(COUNT(*) AS INTEGER) as c FROM "StockItem" WHERE quantity <= "minQuantity"`,
       // New devices added yesterday
       db.device.count({
-        where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
+        where: { createdAt: { gte: yesterdayStartIso, lte: yesterdayEndIso } },
       }),
       // Devices with warranty expiring within 90 days
+      // (QA-ROUND-2026-09-16-C) Device.warrantyEnd is a STRING (ISO date), and
+      // the old `warrantyExpiry` field doesn't exist on the model at all.
+      // String ISO dates compare correctly lexicographically.
       db.device.count({
         where: {
-          warrantyExpiry: {
-            gte: now,
-            lte: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
+          warrantyEnd: {
+            gte: now.toISOString().slice(0, 10),
+            lte: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
+              .toISOString()
+              .slice(0, 10),
           },
         },
       }),
       // Total audit logs yesterday
       db.auditLog.count({
-        where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
+        where: { createdAt: { gte: yesterdayStartIso, lte: yesterdayEndIso } },
       }),
       // Top action yesterday
       db.auditLog.groupBy({
         by: ['action'],
-        where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
+        where: { createdAt: { gte: yesterdayStartIso, lte: yesterdayEndIso } },
         _count: { action: true },
         orderBy: { _count: { action: 'desc' } },
         take: 1,

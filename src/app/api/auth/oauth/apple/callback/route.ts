@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createSign } from 'node:crypto'
 import { db } from '@/lib/db'
 import { createToken, toAuthUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
@@ -96,7 +97,8 @@ function generateAppleClientSecret(
 
   // Use Node.js crypto for ES256 signing
   // Note: Apple private keys are in PEM format
-  const { createSign } = require('node:crypto')
+  // (createSign imported at top — QA-ROUND-2026-09-16-C lint fix; the old
+  // inline require() tripped @typescript-eslint/no-require-imports.)
   const sign = createSign('RSA-SHA256')
   sign.update(signingInput)
   sign.end()

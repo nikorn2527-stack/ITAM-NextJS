@@ -11,8 +11,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import {
   Sheet,
   SheetContent,
@@ -768,7 +768,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     // Now every meterable lifecycle action sets needMeter: true. The actual
     // rendering condition (`cfg.needMeter && device?.meterRequired`) still gates
     // on the device being meterable, so non-metered devices skip the prompt.
-    const deviceIsMeterable = !!device?.meterRequired
+    // (deviceIsMeterable is hoisted to component scope — see definition above.)
     const map: Record<
       string,
       {
@@ -1035,6 +1035,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   })
 
   const device = deviceData?.device
+  // BUGFIX (QA-ROUND-C): `deviceIsMeterable` was previously defined ONLY inside
+  // findActionConfig(), but the transfer-wizard JSX (step 1/step 3) referenced
+  // it from the component render scope → ReferenceError: deviceIsMeterable is
+  // not defined → whole DeviceDetailSheet crashed to the error boundary.
+  // Hoisted here so every scope (findActionConfig + JSX) sees the same value.
+  const deviceIsMeterable = !!device?.meterRequired
 
   // ── Device Set: fetch child devices (devices whose parentDeviceId === this.id) ──
   // Uses the new ?parentDeviceId=<id> filter on GET /api/devices. Declared
@@ -1768,7 +1774,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
             ) : (
               <>
                 <div className="rounded-md border border-slate-200 bg-slate-50/60 p-2 dark:border-slate-800 dark:bg-slate-800/40">
-                  <ResponsiveContainer width="100%" height={180}>
+                  <VisibleResponsiveContainer width="100%" height={180}>
                     <LineChart
                       data={chartData}
                       margin={{ top: 8, right: 12, left: 0, bottom: 4 }}
@@ -1815,7 +1821,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                         activeDot={{ r: 5 }}
                       />
                     </LineChart>
-                  </ResponsiveContainer>
+                  </VisibleResponsiveContainer>
                 </div>
 
                 <ul className="itam-scroll mt-3 max-h-48 space-y-1.5 overflow-y-auto">

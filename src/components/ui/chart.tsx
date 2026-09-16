@@ -4,6 +4,14 @@ import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 
 import { cn } from "@/lib/utils"
+import { useI18nStore } from "@/store/i18n-store"
+
+// QA-ROUND-2026-09-16-C: bare `lang` in ChartTooltipContent was never defined
+// (ReferenceError landmine). Read the active language from the i18n store —
+// getState() is the designed non-hook read for event/render helpers.
+function chartLocale(): string {
+  return useI18nStore.getState().lang === "th" ? "th-TH" : "en-GB"
+}
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const
@@ -234,7 +242,7 @@ function ChartTooltipContent({
                     </div>
                     {item.value && (
                       <span className="text-foreground font-mono font-medium tabular-nums">
-                        {item.value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
+                        {item.value.toLocaleString(chartLocale())}
                       </span>
                     )}
                   </div>

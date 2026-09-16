@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useLang } from '@/store/i18n-store'
+import { useLang, useI18nStore } from '@/store/i18n-store'
 
 interface PendingUser {
   id: string
@@ -42,7 +42,6 @@ interface PendingUser {
 
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = { ...extra }
-  const { lang } = useLang()
   const t = useAuthStore.getState()?.token
   if (t) h['Authorization'] = `Bearer ${t}`
   return h
@@ -56,10 +55,13 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: 'ผู้ดูรายงาน',
 }
 
+// BUGFIX (QA-ROUND-2026-09-16-C): bare `lang` was never defined in this module
+// scope → ReferenceError as soon as a pending user row rendered. Read the
+// language from the zustand store (non-hook read, safe in render helpers).
 function formatDate(iso: string): string {
   try {
     const d = new Date(iso)
-    return d.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
+    return d.toLocaleString(useI18nStore.getState().lang === 'th' ? 'th-TH' : 'en-GB', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

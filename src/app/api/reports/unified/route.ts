@@ -121,22 +121,22 @@ export async function GET(req: NextRequest) {
     let data: unknown
     switch (group) {
       case 'devices':
-        data = await buildDevicesReport(siteCodes)
+        data = await buildDevicesReport(siteCodes, auth.user)
         break
       case 'meters':
-        data = await buildMetersReport(monthParam, siteCodes)
+        data = await buildMetersReport(monthParam, siteCodes, 'th', auth.user)
         break
       case 'workorders':
-        data = await buildWorkOrdersReport(monthParam, siteCodes)
+        data = await buildWorkOrdersReport(monthParam, siteCodes, auth.user)
         break
       case 'stock':
-        data = await buildStockReport(siteCodes)
+        data = await buildStockReport(siteCodes, auth.user)
         break
       case 'maintenance':
-        data = await buildMaintenanceReport(monthParam, siteCodes)
+        data = await buildMaintenanceReport(monthParam, siteCodes, 'th', auth.user)
         break
       case 'approvals':
-        data = await buildApprovalsReport(monthParam, siteCodes)
+        data = await buildApprovalsReport(monthParam, siteCodes, auth.user)
         break
       default:
         return NextResponse.json({ error: 'Unknown group' }, { status: 400 })

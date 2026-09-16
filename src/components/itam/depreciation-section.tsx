@@ -10,10 +10,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Legend,
   Cell,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -219,7 +219,7 @@ export function DepreciationSection() {
               <div className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
                 {t('depreciation.current_value')} vs {t('depreciation.col.acc_dep')} ({chartData.length} {t('depreciation.first_add')})
               </div>
-              <ResponsiveContainer width="100%" height={300}>
+              <VisibleResponsiveContainer width="100%" height={300}>
                 <BarChart data={chartData}>
                   <defs>
                     <linearGradient
@@ -318,7 +318,7 @@ export function DepreciationSection() {
                     radius={[6, 6, 0, 0]}
                   />
                 </BarChart>
-              </ResponsiveContainer>
+              </VisibleResponsiveContainer>
             </div>
 
             {/* Device table */}

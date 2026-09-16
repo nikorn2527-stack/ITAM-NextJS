@@ -17,9 +17,10 @@
 import * as React from 'react'
 import {
   BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip,
   LineChart, Line, AreaChart, Area, Legend,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import { useTheme } from 'next-themes'
 
 // Color palette — orange/teal/amber/emerald (no indigo/blue)
@@ -62,7 +63,7 @@ export function ReportBarChart({
   const gridColor = isDark ? '#1e293b' : '#f1f5f9'
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <VisibleResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
         <XAxis
@@ -87,7 +88,7 @@ export function ReportBarChart({
         />
         <Bar dataKey={dataKey} radius={[4, 4, 0, 0]} fill={color || CHART_COLORS[0]} />
       </BarChart>
-    </ResponsiveContainer>
+    </VisibleResponsiveContainer>
   )
 }
 
@@ -107,7 +108,7 @@ export function ReportPieChart({
   const isDark = theme === 'dark'
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <VisibleResponsiveContainer width="100%" height={height}>
       <PieChart>
         <Pie
           data={data}
@@ -135,7 +136,7 @@ export function ReportPieChart({
           }}
         />
       </PieChart>
-    </ResponsiveContainer>
+    </VisibleResponsiveContainer>
   )
 }
 
@@ -159,7 +160,7 @@ export function ReportLineChart({
   const gridColor = isDark ? '#1e293b' : '#f1f5f9'
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <VisibleResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
         <XAxis dataKey={nameKey} tick={{ fontSize: 11, fill: textColor }} tickLine={false} />
@@ -181,7 +182,7 @@ export function ReportLineChart({
           activeDot={{ r: 5 }}
         />
       </LineChart>
-    </ResponsiveContainer>
+    </VisibleResponsiveContainer>
   )
 }
 
@@ -206,7 +207,7 @@ export function ReportAreaChart({
   const chartColor = color || CHART_COLORS[0]
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <VisibleResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
         <defs>
           <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
@@ -234,6 +235,6 @@ export function ReportAreaChart({
           fill="url(#colorArea)"
         />
       </AreaChart>
-    </ResponsiveContainer>
+    </VisibleResponsiveContainer>
   )
 }

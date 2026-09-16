@@ -283,13 +283,31 @@ export async function GET(req: NextRequest) {
     if (view === 'compare3') {
       // Use the last 3 months of the range (or 3 months ending at monthEnd if range < 3)
       const last3 = months.slice(-3)
+      // Load per-site paper rates (same approach as ranking view) so each row's
+      // cost uses the CORRECT rate for its site, not a single blended rate.
+      const siteAttrRowsC3 = await db.siteAttribute.findMany({
+        select: { SiteCode: true, SiteName: true, PaperRateBW: true, PaperRateColor: true },
+      }).catch(() => [])
+      const rateBySiteC3 = new Map<string, { bw: number; color: number }>()
+      for (const s of siteAttrRowsC3) {
+        const rate = {
+          bw: s.PaperRateBW == null ? 0.5 : Number(s.PaperRateBW),
+          color: s.PaperRateColor == null ? 2.0 : Number(s.PaperRateColor),
+        }
+        if (s.SiteName) rateBySiteC3.set(s.SiteName, rate)
+        if (s.SiteCode) rateBySiteC3.set(s.SiteCode, rate)
+      }
+      const DEFAULT_RATE_C3 = { bw: 0.5, color: 2.0 }
+      const rateForC3 = (site: string | null | undefined) =>
+        (site && rateBySiteC3.get(site)) || DEFAULT_RATE_C3
       const byDevice = new Map<string, {
         assetNo: string
         brand: string | null
         model: string | null
         site: string | null
         department: string | null
-        months: Record<string, { bw: number; color: number }>
+        months: Record<string, { bw: number; color: number; cost: number }>
+        cost: number
       }>()
 
       for (const r of readings) {
@@ -302,13 +320,18 @@ export async function GET(req: NextRequest) {
             site: r.device?.site ?? null,
             department: r.device?.department ?? null,
             months: {},
+            cost: 0,
           })
         }
         const m = r.readingMonth || ''
         const d = byDevice.get(r.assetCode || '')!
-        if (!d.months[m]) d.months[m] = { bw: 0, color: 0 }
+        if (!d.months[m]) d.months[m] = { bw: 0, color: 0, cost: 0 }
+        const rate = rateForC3(r.device?.site)
+        const readingCost = r.pagesBw * rate.bw + r.pagesColor * rate.color
         d.months[m].bw += r.pagesBw
         d.months[m].color += r.pagesColor
+        d.months[m].cost += readingCost
+        d.cost += readingCost
       }
 
       const rows = Array.from(byDevice.values())
@@ -316,7 +339,13 @@ export async function GET(req: NextRequest) {
           const totals = last3.map((m) => (d.months[m]?.bw ?? 0) + (d.months[m]?.color ?? 0))
           const total = totals.reduce((a, b) => a + b, 0)
           // Alias assetCode (front-end expects assetCode, not assetNo)
-          return { ...d, assetCode: d.assetNo, totals, total }
+          return {
+            ...d,
+            assetCode: d.assetNo,
+            totals,
+            total,
+            cost: Math.round(d.cost * 100) / 100,
+          }
         })
         .filter((r) => r.total > 0)
         .sort((a, b) => b.total - a.total)

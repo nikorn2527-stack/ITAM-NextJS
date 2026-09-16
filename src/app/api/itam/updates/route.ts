@@ -17,11 +17,15 @@ export async function GET(req: NextRequest) {
   }
   try {
     const since = Number(new URL(req.url).searchParams.get('since') ?? '0')
-    const sinceDate = new Date(since)
+    // BUGFIX (QA-ROUND-2026-09-16-C): pass an ISO STRING, not a Date object —
+    // under the Bun runtime Prisma 6.19 mis-detects Date instances in filter
+    // args as field-ref objects ("Argument `_ref` is missing" → 500 on every
+    // poll). ISO strings are valid DateTime filter inputs in Node and Bun.
+    const sinceIso = new Date(Number.isFinite(since) ? since : 0).toISOString()
 
     // Query audit logs since the given timestamp
     const logs = await db.auditLog.findMany({
-      where: { createdAt: { gt: sinceDate } },
+      where: { createdAt: { gt: sinceIso } },
       orderBy: { createdAt: 'asc' },
       take: 50, // bounded
       select: {

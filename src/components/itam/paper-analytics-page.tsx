@@ -13,10 +13,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Cell,
   Legend,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import { useAuthStore } from '@/store/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -351,7 +351,7 @@ export function PaperAnalyticsPage() {
           ) : lineData.length === 0 ? (
             <EmptyState message="No dataReadMeter" />
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <VisibleResponsiveContainer width="100%" height={300}>
               <LineChart data={lineData}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisTickColor }} />
@@ -375,7 +375,7 @@ export function PaperAnalyticsPage() {
                   activeDot={{ r: 6 }}
                 />
               </LineChart>
-            </ResponsiveContainer>
+            </VisibleResponsiveContainer>
           )}
         </CardContent>
       </Card>
@@ -391,7 +391,7 @@ export function PaperAnalyticsPage() {
           ) : barData.length === 0 ? (
             <EmptyState message="No dataActive" />
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <VisibleResponsiveContainer width="100%" height={300}>
               <BarChart data={barData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                 <XAxis type="number" tick={{ fontSize: 12, fill: axisTickColor }} />
@@ -417,7 +417,7 @@ export function PaperAnalyticsPage() {
                 />
                 <Bar dataKey="value" fill="#14b8a6" radius={[0, 6, 6, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </VisibleResponsiveContainer>
           )}
         </CardContent>
       </Card>
@@ -575,7 +575,7 @@ export function PaperAnalyticsPage() {
               ) : comparisonChart.length === 0 ? (
                 <EmptyState message="No datainPeriod" />
               ) : (
-                <ResponsiveContainer width="100%" height={300}>
+                <VisibleResponsiveContainer width="100%" height={300}>
                   <BarChart data={comparisonChart}>
                     <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
                     <XAxis
@@ -633,7 +633,7 @@ export function PaperAnalyticsPage() {
                       isAnimationActive
                     />
                   </BarChart>
-                </ResponsiveContainer>
+                </VisibleResponsiveContainer>
               )}
             </div>
 
@@ -768,7 +768,7 @@ export function PaperAnalyticsPage() {
             ) : costBarData.length === 0 ? (
               <EmptyState message="No dataCostinPeriod" />
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <VisibleResponsiveContainer width="100%" height={300}>
                 <BarChart data={costBarData} layout="vertical">
                   <defs>
                     <linearGradient id="costBarFill" x1="0" y1="0" x2="1" y2="0">
@@ -812,7 +812,7 @@ export function PaperAnalyticsPage() {
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </VisibleResponsiveContainer>
             )}
           </div>
 

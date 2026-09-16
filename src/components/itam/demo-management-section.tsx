@@ -55,7 +55,6 @@ import { ROLE_LABELS, type Role } from '@/lib/auth-shared'
 /** Build fetch headers with the user's JWT. */
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = { ...extra }
-  const { lang } = useLang()
   const t = useAuthStore.getState()?.token
   if (t) h['Authorization'] = `Bearer ${t}`
   return h

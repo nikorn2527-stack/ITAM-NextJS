@@ -2,8 +2,9 @@
 
 import {
   BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -32,7 +33,7 @@ export function DevicesReport({ data, isDark }: { data: any; isDark: boolean }) 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <SectionCard title="สัดส่วนตามสถานะ" icon={<Activity className="h-4 w-4" />} accent="#f97316">
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <VisibleResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={data.byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
                   label={(e: any) => `${e.name}: ${e.value}`} labelLine={false}>
@@ -42,13 +43,13 @@ export function DevicesReport({ data, isDark }: { data: any; isDark: boolean }) 
                 </Pie>
                 <Tooltip contentStyle={cs.tooltipStyle} />
               </PieChart>
-            </ResponsiveContainer>
+            </VisibleResponsiveContainer>
           </div>
         </SectionCard>
 
         <SectionCard title="จำนวนตามประเภท" icon={<Layers className="h-4 w-4" />} accent="#0d9488">
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <VisibleResponsiveContainer width="100%" height="100%">
               <BarChart data={data.byType} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={cs.gridColor} />
                 <XAxis dataKey="name" tick={{ fill: cs.textColor, fontSize: 11 }} />
@@ -56,7 +57,7 @@ export function DevicesReport({ data, isDark }: { data: any; isDark: boolean }) 
                 <Tooltip cursor={{ fill: cs.cursorFill }} contentStyle={cs.tooltipStyle} />
                 <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#0d9488" />
               </BarChart>
-            </ResponsiveContainer>
+            </VisibleResponsiveContainer>
           </div>
         </SectionCard>
       </div>

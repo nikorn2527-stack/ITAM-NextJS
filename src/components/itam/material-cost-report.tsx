@@ -51,7 +51,7 @@ import { useAuthStore } from '@/store/auth-store'
 import { canSelectSite } from './types'
 import { CustomColumnSelector, type ColumnDef } from './custom-column-selector'
 import { ReportBarChart, ReportPieChart } from './report-charts'
-import { useT, useLang } from '@/store/i18n-store'
+import { useT, useLang, useI18nStore } from '@/store/i18n-store'
 
 // Column definitions for material cost report
 const COST_REPORT_COLUMNS: ColumnDef[] = [
@@ -158,22 +158,33 @@ interface Site {
 
 function formatBaht(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return '—'
-  return 'THB' + n.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
+  // (QA-ROUND-2026-09-16-C) — same scoping bug as formatInt/formatMonthLabel
+  // below; reads lang from the store instead of the undefined bare variable.
+  return 'THB' + n.toLocaleString((useI18nStore.getState().lang) === 'th' ? 'th-TH' : 'en-GB', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
 }
 
+// BUGFIX (QA-ROUND-2026-09-16-C): these helpers are module-level (outside the
+// component), so the old `lang === 'th'` reads referenced an undefined
+// variable → ReferenceError: lang is not defined → whole module crashed.
+// Read the current language from the zustand store instead — getState()
+// is the designed way to read store state outside React components/hook scope.
+function currentLang(): 'th' | 'en' {
+  return useI18nStore.getState().lang
+}
+
 function formatInt(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return '—'
-  return n.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')
+  return n.toLocaleString(currentLang() === 'th' ? 'th-TH' : 'en-GB')
 }
 
 function formatMonthLabel(month: string): string {
   if (!/^\d{4}-\d{2}$/.test(month)) return month
   const [y, m] = month.split('-').map(Number)
   const d = new Date(y, m - 1, 1)
-  return d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', { month: 'long', year: 'numeric' })
+  return d.toLocaleDateString(currentLang() === 'th' ? 'th-TH' : 'en-GB', { month: 'long', year: 'numeric' })
 }
 
 function currentMonthValue(): string {

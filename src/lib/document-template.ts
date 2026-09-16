@@ -495,6 +495,7 @@ export interface RenderResult {
 export function renderPDFFromTemplate(
   template: DocumentTemplate,
   data: DocumentRenderData,
+  lang: 'th' | 'en' = 'th',
 ): RenderResult {
   const { canvas, table, footer, elements } = template
 
@@ -507,6 +508,9 @@ export function renderPDFFromTemplate(
   const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage))
 
   // ── Build variable values for header elements + footer ──────────────────
+  // BUGFIX (QA-ROUND-2026-09-16-C): `lang` was referenced but never defined
+  // in this module → ReferenceError on every render. Now an explicit optional
+  // parameter (defaults to 'th', matching the hardcoded <html lang="th">).
   const printedAt = new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     dateStyle: 'long',
     timeStyle: 'short',

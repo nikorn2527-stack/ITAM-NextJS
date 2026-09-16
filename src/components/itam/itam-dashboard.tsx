@@ -24,10 +24,11 @@ import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
+  PieChart, Pie, Cell, Tooltip as ReTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area, LabelList,
   ReferenceLine,
 } from 'recharts'
+import { VisibleResponsiveContainer } from '@/components/itam/visible-responsive-container'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -44,7 +45,7 @@ import { cn } from '@/lib/utils'
 import {
   Package, CheckCircle2, Wrench, FileText, TrendingUp, Building2,
   FileDown, Flame, BarChart3, Trophy, RefreshCw, Loader2,
-  AlertTriangle, Palette, ArrowUpRight, ArrowDownRight, CircleAlert,
+  AlertTriangle, Palette, ArrowUpRight, ArrowDownRight, CircleAlert, Wallet,
   CalendarClock, ArrowRight, History, Settings2, Inbox, MoreHorizontal,
   Printer, Wifi, WifiOff, Activity,
 } from 'lucide-react'
@@ -65,7 +66,16 @@ import {
 import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 import { relativeTime } from './reports/shared'
 
-interface SiteRow { siteCode: string; siteName: string | null; deviceCount: number; activeCount: number; paperSheets: number }
+interface SiteRow {
+  siteCode: string
+  siteName: string | null
+  deviceCount: number
+  activeCount: number
+  paperSheets: number
+  paperBw?: number
+  paperColor?: number
+  paperCost?: number
+}
 interface DashboardData {
   totals: { total: number; active: number; inactive: number; spare: number; repair: number }
   byType: Array<{ name: string; value: number }>
@@ -1039,6 +1049,13 @@ ${kpiHtml}
   const spare = data?.totals.spare ?? 0
   const repair = data?.totals.repair ?? 0
   const paperThisMonth = data?.paperThisMonth ?? 0
+  // QA-ROUND-2026-09-16-C: paper-cost KPI + per-site breakdown (from the
+  // extended bySite rows: paperBw/paperColor/paperCost per site).
+  const siteCostRows = (data?.bySite ?? [])
+    .filter((s) => (s.paperCost ?? 0) > 0)
+    .map((s) => ({ name: s.siteName || s.siteCode, cost: s.paperCost ?? 0 }))
+    .sort((a, b) => b.cost - a.cost)
+  const paperCostTotal = siteCostRows.reduce((a, r) => a + r.cost, 0)
   const warrantyAlerts =
     (warrantyData?.summary.expiring ?? 0) +
     (warrantyData?.summary.expired ?? 0)
@@ -1180,6 +1197,66 @@ ${kpiHtml}
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* QA-ROUND-2026-09-16-C: paper COST card — money view of paper usage.
+            bySite now carries per-site BW/color + cost (dashboard API), so the
+            card shows the total plus a per-site breakdown when space allows. */}
+        <Card className="shadow-sm border-emerald-200/70 dark:border-emerald-900/40 dark:bg-slate-900">
+          <CardContent className="p-2.5 sm:p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 sm:h-9 sm:w-9">
+                  <Wallet className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    ต้นทุนกระดาษ {paperKpiLabel.replace(/^กระดาษ\s*/, '')}
+                  </div>
+                  {isLoading ? (
+                    <Skeleton className="mt-1 h-6 w-24" />
+                  ) : (
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-xl">
+                        ฿{paperCostTotal.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { maximumFractionDigits: 0 })}
+                      </span>
+                      <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                        ≈ {(paperCostTotal / Math.max(1, paperThisMonth)).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { maximumFractionDigits: 2 })} ฿/แผ่น
+                      </span>
+                    </div>
+                  )}
+                  <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
+                    คิดตามอัตราค่ากระดาษรายสาขา
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Per-site cost breakdown bars (hidden on very small screens) */}
+            {!isLoading && siteCostRows.length > 1 && (
+              <div className="mt-2 hidden space-y-1 sm:block">
+                {siteCostRows.map((row) => {
+                  const pct = paperCostTotal > 0 ? Math.round((row.cost / paperCostTotal) * 100) : 0
+                  return (
+                    <div key={row.name} className="flex items-center gap-2 text-[10px]">
+                      <span className="w-20 shrink-0 truncate text-slate-500 dark:text-slate-400" title={row.name}>
+                        {row.name}
+                      </span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
+                          style={{ width: `${Math.max(pct, 2)}%` }}
+                        />
+                      </div>
+                      <span className="w-16 shrink-0 text-right font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+                        ฿{row.cost.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { maximumFractionDigits: 0 })}
+                      </span>
+                      <span className="w-8 shrink-0 text-right tabular-nums text-slate-400">{pct}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1520,7 +1597,7 @@ ${kpiHtml}
               <EmptyState message={t('dash.no_data')} />
             ) : (
               <div className="relative h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <VisibleResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={donutData}
@@ -1555,7 +1632,7 @@ ${kpiHtml}
                       }}
                     />
                   </PieChart>
-                </ResponsiveContainer>
+                </VisibleResponsiveContainer>
                 {/* Center label */}
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                   <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
@@ -1601,7 +1678,7 @@ ${kpiHtml}
               <EmptyState message={t('dash.no_data')} />
             ) : (
               <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <VisibleResponsiveContainer width="100%" height="100%">
                   <BarChart data={barData} margin={{ top: 12, right: 8, left: -10, bottom: 4 }}>
                     <defs>
                       <linearGradient id="barTealGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1650,7 +1727,7 @@ ${kpiHtml}
                       />
                     </Bar>
                   </BarChart>
-                </ResponsiveContainer>
+                </VisibleResponsiveContainer>
               </div>
             )}
           </CardContent>
@@ -1678,7 +1755,7 @@ ${kpiHtml}
           ) : (
             <>
               <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <VisibleResponsiveContainer width="100%" height="100%">
                   <AreaChart data={areaData} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
                     <defs>
                       <linearGradient id="areaTealGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1803,7 +1880,7 @@ ${kpiHtml}
                       />
                     )}
                   </AreaChart>
-                </ResponsiveContainer>
+                </VisibleResponsiveContainer>
               </div>
               {forecastSheets !== null && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">

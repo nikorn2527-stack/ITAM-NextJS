@@ -49,7 +49,7 @@ import {
   ClipboardList,
   Image as ImageIcon,
 } from 'lucide-react'
-import { useLang } from '@/store/i18n-store'
+import { useLang, useI18nStore } from '@/store/i18n-store'
 
 // ── Types (kept self-contained; mirrors WorkOrder shape from API) ──
 interface WoMessage {
@@ -197,10 +197,13 @@ function statusLabel(s: string): string {
   return STATUS_LABELS[s] ?? s
 }
 
+// BUGFIX (QA-ROUND-2026-09-16-C): bare `lang` was never defined at module scope
+// → ReferenceError when these helpers ran. Read the language from the zustand
+// store (non-hook read, safe in render helpers).
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
+    return new Date(iso).toLocaleString(useI18nStore.getState().lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -215,7 +218,7 @@ function formatDateTime(iso: string | null | undefined): string {
 function formatDateOnly(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
+    return new Date(iso).toLocaleDateString(useI18nStore.getState().lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
