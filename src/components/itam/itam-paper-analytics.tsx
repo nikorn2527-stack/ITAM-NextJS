@@ -63,10 +63,10 @@ interface OverviewResp {
   topDept: Array<{ name: string; sheets: number }>
   topDevice: Array<{ assetCode: string; sheets: number; brand: string | null; model: string | null }>
 }
-interface RankingRow { name: string; bw: number; color: number; total: number; deviceCount: number }
+interface RankingRow { name: string; bw: number; color: number; total: number; cost?: number; deviceCount: number }
 interface DeviceRow {
   assetCode: string; brand: string | null; model: string | null; site: string | null
-  department: string | null; bw: number; color: number; total: number
+  department: string | null; bw: number; color: number; total: number; cost?: number
 }
 interface RankingResp {
   view: 'ranking'
@@ -592,17 +592,17 @@ ${kpiHtml}
           ) : rankingQuery.data ? (
             <>
               <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => exportCsvFromRows(rankingQuery.data!.departments.map((d) => ({ name: d.name, bw: d.bw, color: d.color, total: d.total, deviceCount: d.deviceCount })), `paper-ranking-dept-${dateStamp()}.csv`, [{ key: 'name', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' }, { key: 'total', label: 'รวม' }, { key: 'deviceCount', label: 'จำนวนเครื่อง' }])}>
+                <Button variant="outline" size="sm" onClick={() => exportCsvFromRows(rankingQuery.data!.departments.map((d) => ({ name: d.name, bw: d.bw, color: d.color, total: d.total, cost: d.cost ?? 0, deviceCount: d.deviceCount })), `paper-ranking-dept-${dateStamp()}.csv`, [{ key: 'name', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' }, { key: 'total', label: 'รวม' }, { key: 'cost', label: 'ต้นทุน (฿)' }, { key: 'deviceCount', label: 'จำนวนเครื่อง' }])}>
                   <FileSpreadsheet className="h-3.5 w-3.5" /> CSV แผนก
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => exportExcelFromRows(rankingQuery.data!.devices.map((d) => ({ assetCode: d.assetCode, brand: d.brand ?? '', model: d.model ?? '', site: d.site ?? '', department: d.department ?? '', bw: d.bw, color: d.color, total: d.total })), [{ key: 'assetCode', label: 'รหัส' }, { key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }, { key: 'site', label: 'สาขา' }, { key: 'department', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' }, { key: 'total', label: 'รวม' }], `paper-ranking-devices-${dateStamp()}.xls`)}>
+                <Button variant="outline" size="sm" onClick={() => exportExcelFromRows(rankingQuery.data!.devices.map((d) => ({ assetCode: d.assetCode, brand: d.brand ?? '', model: d.model ?? '', site: d.site ?? '', department: d.department ?? '', bw: d.bw, color: d.color, total: d.total, cost: d.cost ?? 0 })), [{ key: 'assetCode', label: 'รหัส' }, { key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }, { key: 'site', label: 'สาขา' }, { key: 'department', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' }, { key: 'total', label: 'รวม' }, { key: 'cost', label: 'ต้นทุน (฿)' }], `paper-ranking-devices-${dateStamp()}.xls`)}>
                   <FileSpreadsheet className="h-3.5 w-3.5" /> Excel เครื่อง
                 </Button>
               </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <RankingCard title="10 แผนกใช้กระดาษสูงสุด" rows={rankingQuery.data.departments} accent="#f97316" nameKey="name" />
                 <RankingCard title="10 อาคาร-ชั้น ใช้กระดาษสูงสุด" rows={rankingQuery.data.buildingFloors} accent="#0d9488" nameKey="name" />
-                <RankingCard title="10 เครื่องพิมพ์ใช้กระดาษสูงสุด" rows={rankingQuery.data.devices.map((d) => ({ name: `${d.assetCode} · ${d.brand ?? ''} ${d.model ?? ''}`.trim(), bw: d.bw, color: d.color, total: d.total, deviceCount: 1 }))} accent="#f59e0b" nameKey="name" />
+                <RankingCard title="10 เครื่องพิมพ์ใช้กระดาษสูงสุด" rows={rankingQuery.data.devices.map((d) => ({ name: `${d.assetCode} · ${d.brand ?? ''} ${d.model ?? ''}`.trim(), bw: d.bw, color: d.color, total: d.total, cost: d.cost, deviceCount: 1 }))} accent="#f59e0b" nameKey="name" />
               </div>
             </>
           ) : (
@@ -873,13 +873,24 @@ function RankingCard({
           ) : rows.map((r, i) => {
             const total = Number(r.total ?? 0)
             const pct = Math.max(2, (total / max) * 100)
+            const cost = r.cost == null ? null : Number(r.cost)
             return (
               <div key={i}>
-                <div className="mb-1 flex justify-between text-xs">
+                <div className="mb-1 flex justify-between gap-2 text-xs">
                   <span className="truncate font-medium text-slate-700 dark:text-slate-200">
                     {i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}.`} {String(r[nameKey] ?? '')}
                   </span>
-                  <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{(Number(total) || 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</span>
+                  <span className="flex shrink-0 items-baseline gap-1.5">
+                    {cost != null && (
+                      <span
+                        className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400"
+                        title="ต้นทุนโดยประมาณ (อัตรารายสาขา)"
+                      >
+                        ฿{cost.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { maximumFractionDigits: 0 })}
+                      </span>
+                    )}
+                    <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{(Number(total) || 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</span>
+                  </span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
                   <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} className="h-full rounded" style={{ background: accent }} />

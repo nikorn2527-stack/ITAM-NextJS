@@ -23110,3 +23110,26 @@ Known issues (documented, not fixed):
 Stage Summary:
 - 3 bugs fixed (React keys, script-tag noise ×1 source, seed Decimal serialization), 2 features added (paper cost column + totals footer, activity feed de-noise + relative time), all verified e2e in browser.
 - Next round candidates: i18n dictionary coverage for inline Thai; settings menu container polish ("เข้าสู่ระบบภายนอก / โปรไฟล์ของฉัน" outside white container — from earlier QA rounds); consider adding cost column to ranking tab too.
+
+---
+Task ID: QA-ROUND-2026-09-16-B
+Agent: orchestrator (cron webDevReview)
+Task: Scheduled QA round — ranking cost feature + settings banner styling polish
+
+Work Log:
+- Reviewed previous round state: all prior fixes pushed (37f2426), server healthy, 0 console errors on fresh login.
+- Investigated legacy QA item "เข้าสู่ระบบภายนอก/โปรไฟล์ของฉัน outside white container": inspected settings tab list DOM chain + VLM screenshot analysis — no container separation issue found in current build (appears fixed in earlier UX sprints). Marked as resolved/no longer reproducible.
+- FEATURE (ranking tab cost): API /api/itam/paper-analytics?view=ranking now loads SiteAttribute rates once and accumulates cost per reading using the CORRECT rate for each reading's site (dept/building-floor groups spanning HQ+BKK no longer need a blended rate). Response departments/buildingFloors/devices all include cost (rounded to 2dp).
+  - Frontend: RankingCard renders emerald ฿ cost next to sheet total (hidden when cost absent), tooltip "ต้นทุนโดยประมาณ (อัตรารายสาขา)". CSV แผนก + Excel เครื่อง exports include ต้นทุน (฿) column.
+  - Verified via API: dept IT cost=10,462.50 (matches detail tab footer exactly), BKK device cost=2,860.50 (rate 0.6/3.5 math checks out).
+  - Verified in DOM: ฿10,463 (dept card), ฿2,288/฿2,051 (printer card) visible next to totals.
+- STYLING (settings completion banner): restructured header per VLM feedback — Row 1: title + readiness badge (rounded pill) + dismiss; Row 2: full-width progress bar (was a cramped 160px bar wedged mid-row, hidden on mobile) now with gradient fill, role=progressbar + aria-valuenow/min/max/label. Visible on all screen sizes.
+  - Verified in DOM: bar 896px wide, fill 57%, aria=57. VLM confirms clean layout, no remaining misalignment.
+- Console after changes: 0 errors.
+- lint on changed files: 0 errors.
+- Note: one-time "unique key" dev warning fired during initial module mount in an earlier check but does NOT reproduce on tab switches; appears tied to first-mount render of a KeepAlivePage module — logged as known minor issue, no functional impact.
+
+Stage Summary:
+- ✅ Paper cost coverage now complete across ALL views: overview (unchanged), detail table + CSV, custom export, ranking cards + CSV/Excel.
+- ✅ Settings banner polished with accessible full-width progress bar.
+- Next round candidates: i18n dictionary coverage for inline Thai strings (large); compare3 tab cost column; investigate first-mount key warning source if it reproduces.

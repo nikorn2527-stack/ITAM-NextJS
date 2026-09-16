@@ -174,10 +174,29 @@ export async function GET(req: NextRequest) {
     // RANKING
     // ───────────────────────────────────────────────────────────────────────
     if (view === 'ranking') {
-      const byDept = new Map<string, { bw: number; color: number; devices: Set<string> }>()
-      const byBuildingFloor = new Map<string, { bw: number; color: number; devices: Set<string> }>()
+      // Load per-site paper rates once so we can accumulate cost per group
+      // (dept/building-floor/device) using the CORRECT rate for each reading's
+      // site — a dept spanning HQ + BKK must not use a single blended rate.
+      const siteAttrRows = await db.siteAttribute.findMany({
+        select: { SiteCode: true, SiteName: true, PaperRateBW: true, PaperRateColor: true },
+      }).catch(() => [])
+      const rateBySite = new Map<string, { bw: number; color: number }>()
+      for (const s of siteAttrRows) {
+        const rate = {
+          bw: s.PaperRateBW == null ? 0.5 : Number(s.PaperRateBW),
+          color: s.PaperRateColor == null ? 2.0 : Number(s.PaperRateColor),
+        }
+        if (s.SiteName) rateBySite.set(s.SiteName, rate)
+        if (s.SiteCode) rateBySite.set(s.SiteCode, rate)
+      }
+      const DEFAULT_RATE = { bw: 0.5, color: 2.0 }
+      const rateFor = (site: string | null | undefined) =>
+        (site && rateBySite.get(site)) || DEFAULT_RATE
+
+      const byDept = new Map<string, { bw: number; color: number; cost: number; devices: Set<string> }>()
+      const byBuildingFloor = new Map<string, { bw: number; color: number; cost: number; devices: Set<string> }>()
       const byDevice = new Map<string, {
-        bw: number; color: number; brand: string | null; model: string | null
+        bw: number; color: number; cost: number; brand: string | null; model: string | null
         site: string | null; department: string | null
       }>()
 
@@ -187,24 +206,26 @@ export async function GET(req: NextRequest) {
         const flr = r.device?.floor || 'ไม่ระบุ'
         const bfKey = `${bld} | ${flr}`
         const dKey = r.assetCode || ''
+        const rate = rateFor(r.device?.site)
+        const readingCost = r.pagesBw * rate.bw + r.pagesColor * rate.color
 
-        if (!byDept.has(dept)) byDept.set(dept, { bw: 0, color: 0, devices: new Set() })
+        if (!byDept.has(dept)) byDept.set(dept, { bw: 0, color: 0, cost: 0, devices: new Set() })
         const d = byDept.get(dept)!
-        d.bw += r.pagesBw; d.color += r.pagesColor; d.devices.add(r.assetCode || '')
+        d.bw += r.pagesBw; d.color += r.pagesColor; d.cost += readingCost; d.devices.add(r.assetCode || '')
 
-        if (!byBuildingFloor.has(bfKey)) byBuildingFloor.set(bfKey, { bw: 0, color: 0, devices: new Set() })
+        if (!byBuildingFloor.has(bfKey)) byBuildingFloor.set(bfKey, { bw: 0, color: 0, cost: 0, devices: new Set() })
         const bf = byBuildingFloor.get(bfKey)!
-        bf.bw += r.pagesBw; bf.color += r.pagesColor; bf.devices.add(r.assetCode || '')
+        bf.bw += r.pagesBw; bf.color += r.pagesColor; bf.cost += readingCost; bf.devices.add(r.assetCode || '')
 
         if (!byDevice.has(dKey)) byDevice.set(dKey, {
-          bw: 0, color: 0,
+          bw: 0, color: 0, cost: 0,
           brand: r.device?.brand ?? null,
           model: r.device?.model ?? null,
           site: r.device?.site ?? null,
           department: r.device?.department ?? null,
         })
         const dv = byDevice.get(dKey)!
-        dv.bw += r.pagesBw; dv.color += r.pagesColor
+        dv.bw += r.pagesBw; dv.color += r.pagesColor; dv.cost += readingCost
       }
 
       const departments = Array.from(byDept.entries())
@@ -213,6 +234,7 @@ export async function GET(req: NextRequest) {
           bw: v.bw,
           color: v.color,
           total: v.bw + v.color,
+          cost: Math.round(v.cost * 100) / 100,
           deviceCount: v.devices.size,
         }))
         .sort((a, b) => b.total - a.total)
@@ -224,6 +246,7 @@ export async function GET(req: NextRequest) {
           bw: v.bw,
           color: v.color,
           total: v.bw + v.color,
+          cost: Math.round(v.cost * 100) / 100,
           deviceCount: v.devices.size,
         }))
         .sort((a, b) => b.total - a.total)
@@ -240,6 +263,7 @@ export async function GET(req: NextRequest) {
           bw: v.bw,
           color: v.color,
           total: v.bw + v.color,
+          cost: Math.round(v.cost * 100) / 100,
         }))
         .sort((a, b) => b.total - a.total)
         .slice(0, 10)
