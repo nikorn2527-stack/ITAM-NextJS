@@ -23198,3 +23198,36 @@ Stage Summary:
 - 1 feature: per-site-rated 6-month cost trend + sparkline + MoM badge in the cost KPI card (API + UI).
 - Styling: consistent hover-lift across all KPI cards.
 - All verified e2e (admin + demo_admin). Ready to commit + push.
+
+---
+Task ID: QA-ROUND-2026-09-16-E
+Agent: orchestrator (cron webDevReview)
+Task: Scheduled QA round — found & fixed demo/site isolation leaks in 3 device API routes (warranty, lifecycle, utilization) + revived utilization 500; feature: full warranty status widget on dashboard (distribution bar + next-to-expire list + skeleton loading)
+
+Work Log:
+- Reviewed state: round D commit 8d8a4e7 latest, server alive, fresh load = 0 console errors. The 'CostSparkline is not defined' entries in dev.log were transient Fast-Refresh artifacts from mid-edit HMR during round D — verified NOT reproducible on fresh loads (source is correct + committed).
+- Full admin module walk (8 modules): 0 console errors.
+- FEATURE (warranty status widget): dashboard previously used only the aggregate count from /api/devices/warranty (query discarded the rich per-device array at line ~814). Upgraded the amber count-only bar into a full widget:
+  - Query now keeps a trimmed per-device array (assetCode/name/brand/model/site/warrantyExpiry/status/daysUntilExpiry) — trimmed to avoid holding ~2k full rows in the React Query cache on real installs.
+  - Segmented distribution bar (emerald=active / amber=expiring / rose=expired / slate=unknown) with legend counts + coverage % (active/total).
+  - "จะหมดถัดไป" (next to expire) list: 3 soonest future expiries with asset code, device name, site, countdown chip (amber when ≤30 days, "อีก N วัน"), full date on tooltip.
+  - Smart click-through: filters devices by 'expiring' when expiring>0 else 'expired' — the old bar always set 'expiring', which landed admin (0 expiring, 8 expired) on an EMPTY list.
+  - Skeleton loading state (was showing misleading 0% during fetch), keyboard accessible (Enter/Space via role=button), focus-visible ring, no-data subtitle ("ยังไม่ได้ระบุวันหมดรับประกันของอุปกรณ์") when all devices lack warranty dates (demo case).
+  - 10 new i18n keys (TH/EN) in src/lib/i18n.ts.
+  - Verified admin: 2 segments (4 active/8 expired) + 3 rows (UDH-CPY-2024-001 อีก 116 วัน, UDH-PC-2024-001 อีก 155 วัน, NKP-CPY-2024-001 อีก 190 วัน) + 20% coverage; click → devices page shows 8 expired rows. VLM: "clean, well-aligned, no overlapping".
+- BUG FIX #1 (warranty demo/site leak): demo_admin's /api/devices/warranty returned REAL devices (summary 4/0/8/8 — same as admin) → the new widget would leak real hospital data to demo users. Route's findMany had NO demoFilter and NO siteFilterForUser. Fixed; verified demo now gets 8 DEMO-* devices only (0/0/0/8), admin gets 12 real only (4/0/8/0 — the previous "8 unknown" were leaked DEMO devices).
+- BUG FIX #2 (lifecycle demo/site leak, same class): /api/devices/lifecycle (actively polled by the dashboard) had 3 unfiltered queries (findMany + 2 groupBy). Fixed with a shared scopedWhere. Verified: admin=12 real devices, demo=8 DEMO-* devices.
+- BUG FIX #3 (utilization broken + leaking): /api/devices/utilization had no filters AND queried phantom fields `date`/`delta` (real schema: readingDate, pagesBw/pagesColor) → PrismaClientValidationError 500 on EVERY call (latent — its UI section 'paper-analytics-page' is currently orphaned/unreachable, which is why QA walks never surfaced it). Fixed both: scoped filters + real fields + usage-type filter (MONTHLY/CHECKOUT/RETURN). Verified: admin=10 devices top UDH-CPY-2024-001 1724 sheets; demo=6 DEMO-* devices top DEMO-PRINTER-002.
+- Note: proactively audited ALL routes under src/app/api/devices/*/ for the leak class — depreciation + main list already filtered; import route (write-path, uses demoTag on create) + next-asset-code (intentionally global for collision avoidance) left as-is; [id]/resolve have no device list queries.
+- Regression: tsc --noEmit clean; eslint 0 errors on all changed files (1 pre-existing warning); full demo module walk (9 modules incl. reports/settings) = 0 console errors; demo isolation verified across all 3 fixed routes.
+
+Known issues (documented, not fixed):
+- next-themes dev-only "script tag" console warning (upstream) + Turbopack Fast-Refresh transient ReferenceErrors — both dev-only.
+- i18n dictionary coverage for inline Thai strings — still the large remaining refactor.
+- 115 pre-existing lint warnings.
+- 'paper-analytics-page' (with UtilizationSection) is orphaned — no nav path sets it; consider wiring it into the paper analytics module or removing it next round.
+
+Stage Summary:
+- 3 isolation leaks fixed (warranty, lifecycle, utilization) + utilization 500 revived — the recurring "unscoped device query" bug class is now audited clean across all /api/devices/* routes.
+- 1 feature: warranty status widget (distribution + next-to-expire + smart click-through + skeleton + a11y + i18n).
+- All verified e2e (admin + demo_admin), VLM-reviewed. Ready to commit + push.

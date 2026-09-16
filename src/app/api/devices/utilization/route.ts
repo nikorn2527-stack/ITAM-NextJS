@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { demoFilter } from '@/lib/demo-mode'
+import { siteFilterForUser } from '@/lib/auth'
 
 type RangeKey = 'month' | '30d' | 'quarter' | 'all'
 
@@ -116,8 +118,14 @@ export async function GET(req: NextRequest) {
       : 'month'
     const rangeInfo = computeRange(range)
 
+    // QA-ROUND-2026-09-16-E: scope to the caller's data (demo isolation +
+    // allowed sites) — readings are already bounded to these device ids below.
     const devices = await db.device.findMany({
-      where: { type: { in: METERABLE_TYPES } },
+      where: {
+        type: { in: METERABLE_TYPES },
+        ...demoFilter(auth.user),
+        ...siteFilterForUser(auth.row),
+      },
       select: {
         id: true,
         assetCode: true,
@@ -140,28 +148,35 @@ export async function GET(req: NextRequest) {
 
     // Pull all readings that fall within the start of the first month shown
     // (use the month list to bound the query) through today.
+    // QA-ROUND-2026-09-16-E: the real schema fields are readingDate (ISO
+    // string) and pagesBw/pagesColor (per-reading usage deltas) — the old
+    // query used phantom `date`/`delta` fields and 500'd on every call.
     const months = monthColumns(range)
     const firstMonthStart = `${months[0]}-01`
     const todayISO = new Date().toISOString().slice(0, 10)
 
     const readings = await db.meterReading.findMany({
       where: {
-        date: { gte: firstMonthStart, lte: todayISO },
+        readingDate: { gte: firstMonthStart, lte: todayISO },
         deviceId: { in: devices.map((d) => d.id) },
+        // Only usage readings — mirrors the dashboard trend filter.
+        readingType: { in: ['MONTHLY', 'CHECKOUT', 'RETURN'] },
       },
-      select: { deviceId: true, delta: true, date: true },
+      select: { deviceId: true, pagesBw: true, pagesColor: true, readingDate: true },
     })
 
-    // Aggregate per device per month (positive deltas only = sheets printed)
+    // Aggregate per device per month (pagesBw+pagesColor = sheets printed)
     const perDeviceMonth = new Map<string, Map<string, number>>()
     for (const r of readings) {
-      const m = r.date.slice(0, 7) // YYYY-MM
+      const m = (r.readingDate || '').slice(0, 7) // YYYY-MM
+      if (!m) continue
       let inner = perDeviceMonth.get(r.deviceId)
       if (!inner) {
         inner = new Map<string, number>()
         perDeviceMonth.set(r.deviceId, inner)
       }
-      inner.set(m, (inner.get(m) ?? 0) + (r.delta > 0 ? r.delta : 0))
+      const sheets = (r.pagesBw > 0 ? r.pagesBw : 0) + (r.pagesColor > 0 ? r.pagesColor : 0)
+      inner.set(m, (inner.get(m) ?? 0) + sheets)
     }
 
     // Build device rows

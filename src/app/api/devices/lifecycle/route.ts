@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { demoFilter } from '@/lib/demo-mode'
+import { siteFilterForUser } from '@/lib/auth'
 
 // Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
 export const maxDuration = 60
@@ -120,11 +122,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
   try {
+    // QA-ROUND-2026-09-16-E: scope all three queries to the caller's data
+    // (demo isolation + allowed sites). Previously unfiltered — demo users
+    // saw real devices' lifecycle data and site-restricted users saw every
+    // site. Same bug class as the warranty-route leak fixed this round.
+    const scopedWhere = {
+      ...demoFilter(auth.user),
+      ...siteFilterForUser(auth.row),
+    }
     // Fetch only the columns we need for lifecycle analysis. The schema has
     // indexes on `status` and `deviceType` so the groupBy queries below are
     // cheap; we still need the per-device rows for the replacement-score table.
     const [devices, byTypeGroups, statusGroups] = await Promise.all([
       db.device.findMany({
+        where: scopedWhere,
         select: {
           id: true,
           assetCode: true,
@@ -142,12 +153,14 @@ export async function GET(req: NextRequest) {
       // second findMany + JS loop. Prisma can group by multiple columns.
       db.device.groupBy({
         by: ['type', 'status'],
+        where: scopedWhere,
         _count: { _all: true },
       }),
       // Group by status alone (used to fill the active/inactive totals when
       // a type has no rows for a given status).
       db.device.groupBy({
         by: ['status'],
+        where: scopedWhere,
         _count: { _all: true },
       }),
     ])

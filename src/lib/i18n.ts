@@ -564,6 +564,17 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   'dash.warranty.expired_count': { th: 'หมดแล้ว {count}', en: 'Expired {count}' },
   'dash.warranty.all_covered': { th: 'ทุกเครื่องยังอยู่ในรับประกัน', en: 'All devices are under warranty' },
   'dash.warranty.view_list': { th: 'ดูรายการ →', en: 'View list →' },
+  // Warranty status widget (QA-ROUND-2026-09-16-E)
+  'dash.warranty.status_title': { th: 'สถานะการรับประกัน', en: 'Warranty status' },
+  'dash.warranty.active_count': { th: 'ยังรับประกัน {count}', en: 'Active {count}' },
+  'dash.warranty.unknown_count': { th: 'ไม่ระบุ {count}', en: 'Unknown {count}' },
+  'dash.warranty.next_expiry': { th: 'จะหมดถัดไป', en: 'Next to expire' },
+  'dash.warranty.days_left': { th: 'อีก {count} วัน', en: '{count} days left' },
+  'dash.warranty.expired_ago': { th: 'หมดแล้ว {count} วัน', en: 'Expired {count} days ago' },
+  'dash.warranty.no_future': { th: 'ไม่มีการรับประกันที่จะหมดเร็ว ๆ นี้', en: 'No warranties ending soon' },
+  'dash.warranty.no_data': { th: 'ยังไม่ได้ระบุวันหมดรับประกันของอุปกรณ์', en: 'No warranty dates recorded yet' },
+  'dash.warranty.coverage': { th: 'อัตราครอบคลุม', en: 'Coverage' },
+  'dash.warranty.devices': { th: 'เครื่อง', en: 'devices' },
 
   // Insights widget
   'dash.insights.paper_this_month': { th: 'กระดาษเดือนนี้:', en: 'Paper this month:' },

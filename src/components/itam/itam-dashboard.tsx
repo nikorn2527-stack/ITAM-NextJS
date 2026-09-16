@@ -99,6 +99,25 @@ interface WarrantySummary {
   unknown: number
 }
 
+/** Per-device warranty row (subset of /api/devices/warranty's `devices`).
+ *  Used by the warranty status widget for the distribution bar and the
+ *  next-to-expire list (QA-ROUND-2026-09-16-E). */
+interface WarrantyDevice {
+  assetCode: string
+  name: string
+  brand: string | null
+  model: string | null
+  site: string | null
+  warrantyExpiry: string | null
+  status: 'active' | 'expiring' | 'expired' | 'unknown'
+  daysUntilExpiry: number | null
+}
+
+interface WarrantyResponse {
+  summary: WarrantySummary
+  devices: WarrantyDevice[]
+}
+
 interface RemindersSummary {
   hasActiveCycle: boolean
   totalRead: number
@@ -799,8 +818,8 @@ export function ItamDashboard() {
     refetchInterval: 600_000,
   })
 
-  // Warranty summary
-  const { data: warrantyData } = useQuery<{ summary: WarrantySummary }>({
+  // Warranty summary + per-device rows (feeds the warranty status widget)
+  const { data: warrantyData, isLoading: warrantyLoading } = useQuery<WarrantyResponse>({
     queryKey: ['warranty-summary'],
     queryFn: async () => {
       const res = await fetch('/api/devices/warranty', {
@@ -810,8 +829,23 @@ export function ItamDashboard() {
         })(),
       })
       if (!res.ok) throw new Error('Failed to load warranty')
-      const json = await res.json()
-      return { summary: json.summary as WarrantySummary }
+      const json = await res.json() as {
+        summary: WarrantySummary
+        devices?: Array<Record<string, unknown>>
+      }
+      // Keep only the fields the widget needs (devices can be ~2k rows on
+      // real installs — don't hold the full objects in the query cache).
+      const devices: WarrantyDevice[] = (json.devices ?? []).map((d) => ({
+        assetCode: String(d.assetCode ?? ''),
+        name: String(d.name ?? ''),
+        brand: (d.brand as string | null) ?? null,
+        model: (d.model as string | null) ?? null,
+        site: (d.site as string | null) ?? null,
+        warrantyExpiry: (d.warrantyExpiry as string | null) ?? null,
+        status: (d.status as WarrantyDevice['status']) ?? 'unknown',
+        daysUntilExpiry: (d.daysUntilExpiry as number | null) ?? null,
+      }))
+      return { summary: json.summary, devices }
     },
     staleTime: 60_000,
   })
@@ -1116,6 +1150,25 @@ ${kpiHtml}
   const warrantyAlerts =
     (warrantyData?.summary.expiring ?? 0) +
     (warrantyData?.summary.expired ?? 0)
+  // ── Warranty status widget derived data (QA-ROUND-2026-09-16-E) ──
+  const warrantySegments = React.useMemo(() => {
+    const s = warrantyData?.summary
+    return [
+      { key: 'active', count: s?.active ?? 0, color: '#10b981' },
+      { key: 'expiring', count: s?.expiring ?? 0, color: '#f59e0b' },
+      { key: 'expired', count: s?.expired ?? 0, color: '#f43f5e' },
+      { key: 'unknown', count: s?.unknown ?? 0, color: '#94a3b8' },
+    ]
+  }, [warrantyData?.summary])
+  const warrantyTotal = warrantySegments.reduce((a, seg) => a + seg.count, 0)
+  const warrantyCoverage = warrantyTotal > 0 ? Math.round(((warrantyData?.summary.active ?? 0) / warrantyTotal) * 100) : null
+  // Soonest FUTURE expiries (still covered today) — replacement planning list.
+  const nextExpiries = React.useMemo(() => {
+    return (warrantyData?.devices ?? [])
+      .filter((d) => d.daysUntilExpiry != null && d.daysUntilExpiry >= 0)
+      .sort((a, b) => (a.daysUntilExpiry ?? 0) - (b.daysUntilExpiry ?? 0))
+      .slice(0, 3)
+  }, [warrantyData?.devices])
   // Resolve the active range's labels via i18n so they flip with TH/EN.
   const rangeOpt = DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)
   const rangeInfoLabel = rangeOpt ? t(rangeOpt.labelKey) : t('dash.range.month')
@@ -1173,18 +1226,34 @@ ${kpiHtml}
         />
       </div>
 
-      {/* Warranty alert bar — amber card linking to devices */}
-      <button
-        type="button"
+      {/* Warranty status widget (QA-ROUND-2026-09-16-E) — upgraded from the
+          old amber count-only bar. Shows the full coverage distribution
+          (active/expiring/expired/unknown) as a segmented bar plus the next
+          3 devices whose warranty ends soonest. Whole card still jumps to the
+          devices page with the warranty filter applied. */}
+      <div
+        role="button"
+        tabIndex={warrantyAlerts > 0 ? 0 : -1}
         onClick={() => {
+          if (warrantyAlerts === 0) return
           setActivePage('devices')
-          setPendingWarrantyFilter('expiring')
+          // Jump to whichever bucket actually has devices — filtering by
+          // 'expiring' when only 'expired' rows exist would land on an
+          // empty list (admin's common case: 0 expiring, 8 expired).
+          setPendingWarrantyFilter((warrantyData?.summary.expiring ?? 0) > 0 ? 'expiring' : 'expired')
         }}
-        disabled={warrantyAlerts === 0}
+        onKeyDown={(e) => {
+          if (warrantyAlerts === 0) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setActivePage('devices')
+            setPendingWarrantyFilter((warrantyData?.summary.expiring ?? 0) > 0 ? 'expiring' : 'expired')
+          }
+        }}
         className={cn(
           'group relative w-full overflow-hidden rounded-lg border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950',
           warrantyAlerts > 0
-            ? 'cursor-pointer border-amber-200 bg-amber-50 hover:-translate-y-0.5 hover:shadow-md dark:border-amber-800/60 dark:bg-amber-950/30'
+            ? 'cursor-pointer border-amber-200 bg-amber-50/60 hover:-translate-y-0.5 hover:shadow-md dark:border-amber-800/60 dark:bg-amber-950/20'
             : 'cursor-default border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
         )}
       >
@@ -1194,40 +1263,144 @@ ${kpiHtml}
             style={{ background: 'linear-gradient(90deg, #f59e0b, #f97316)' }}
           />
         )}
-        <div className="flex items-center gap-3 p-2.5 sm:p-3">
-          <div
-            className={cn(
-              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-9 sm:w-9',
-              warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+        <div className="p-2.5 sm:p-3">
+          {/* Loading state — skeletons instead of misleading zeros */}
+          {warrantyLoading ? (
+            <div className="space-y-2 py-0.5">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-8 w-8 rounded-lg sm:h-9 sm:w-9" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              </div>
+              <Skeleton className="h-2 w-full rounded-full" />
+              <div className="space-y-1.5 pt-1">
+                <Skeleton className="h-2.5 w-full" />
+                <Skeleton className="h-2.5 w-5/6" />
+                <Skeleton className="h-2.5 w-2/3" />
+              </div>
+            </div>
+          ) : (
+          <>
+          {/* Row 1: header — icon, alert count (or coverage), view-list hint */}
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-9 sm:w-9',
+                warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+              )}
+            >
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                {t('dash.warranty.status_title')}
+              </div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-lg font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-xl">
+                  {warrantyAlerts > 0 ? warrantyAlerts : `${warrantyCoverage ?? 0}%`}
+                </span>
+                <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                  {warrantyAlerts > 0
+                    ? t('dash.unit.device')
+                    : t('dash.warranty.coverage')}
+                </span>
+              </div>
+              <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
+                {warrantyAlerts > 0
+                  ? `${t('dash.warranty.expiring_count').replace('{count}', String(warrantyData?.summary.expiring ?? 0))} · ${t('dash.warranty.expired_count').replace('{count}', String(warrantyData?.summary.expired ?? 0))}`
+                  : (warrantyData?.summary.active ?? 0) === 0 && (warrantyData?.summary.unknown ?? 0) > 0
+                    ? t('dash.warranty.no_data')
+                    : t('dash.warranty.all_covered')}
+              </div>
+            </div>
+            {warrantyAlerts > 0 && (
+              <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
+                {t('dash.warranty.view_list')}
+              </span>
             )}
-          >
-            <AlertTriangle className="h-4 w-4" />
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              {t('dash.warranty.expiring')}
+
+          {/* Row 2: segmented distribution bar + legend counts */}
+          {warrantyTotal > 0 && (
+            <div className="mt-2.5">
+              <div
+                className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+                role="img"
+                aria-label={`${t('dash.warranty.status_title')}: ${t('dash.warranty.active_count').replace('{count}', String(warrantyData?.summary.active ?? 0))}, ${t('dash.warranty.expiring_count').replace('{count}', String(warrantyData?.summary.expiring ?? 0))}, ${t('dash.warranty.expired_count').replace('{count}', String(warrantyData?.summary.expired ?? 0))}, ${t('dash.warranty.unknown_count').replace('{count}', String(warrantyData?.summary.unknown ?? 0))}`}
+              >
+                {warrantySegments.map((seg) =>
+                  seg.count > 0 ? (
+                    <div
+                      key={seg.key}
+                      className="h-full transition-all first:rounded-l-full last:rounded-r-full"
+                      style={{
+                        width: `${(seg.count / warrantyTotal) * 100}%`,
+                        background: seg.color,
+                        opacity: seg.key === 'active' ? 0.9 : 1,
+                      }}
+                      title={`${seg.key}: ${seg.count}`}
+                    />
+                  ) : null,
+                )}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
+                {warrantySegments.map((seg) => (
+                  <span key={seg.key} className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: seg.color }} />
+                    {seg.count.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
+                  </span>
+                ))}
+                {warrantyCoverage != null && (
+                  <span className="ml-auto font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+                    {t('dash.warranty.coverage')} {warrantyCoverage}%
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-xl">
-                {warrantyAlerts}
-              </span>
-              <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                {t('dash.unit.device')}
-              </span>
+          )}
+
+          {/* Row 3: next-to-expire list (soonest future expiries) */}
+          {nextExpiries.length > 0 && (
+            <div className="mt-2.5 border-t border-slate-200/70 pt-2 dark:border-slate-800/70">
+              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                {t('dash.warranty.next_expiry')}
+              </div>
+              <div className="space-y-1">
+                {nextExpiries.map((d) => {
+                  const days = d.daysUntilExpiry ?? 0
+                  const urgent = days <= 30
+                  return (
+                    <div key={d.assetCode} className="flex items-center gap-2 text-[11px]">
+                      <span className="w-24 shrink-0 truncate font-mono text-slate-600 dark:text-slate-300" title={`${d.assetCode} · ${d.site ?? ''}`}>
+                        {d.assetCode}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-slate-500 dark:text-slate-400" title={`${d.name} ${d.brand ?? ''} ${d.model ?? ''}`}>
+                        {d.name}
+                      </span>
+                      <span className="shrink-0 text-slate-400 dark:text-slate-500">{d.site}</span>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                          urgent
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                            : 'bg-slate-500/10 text-slate-500 dark:text-slate-400',
+                        )}
+                        title={d.warrantyExpiry ?? undefined}
+                      >
+                        {t('dash.warranty.days_left').replace('{count}', String(days))}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-            <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
-              {warrantyAlerts > 0
-                ? `${t('dash.warranty.expiring_count').replace('{count}', String(warrantyData?.summary.expiring ?? 0))} · ${t('dash.warranty.expired_count').replace('{count}', String(warrantyData?.summary.expired ?? 0))}`
-                : t('dash.warranty.all_covered')}
-            </div>
-          </div>
-          {warrantyAlerts > 0 && (
-            <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
-              {t('dash.warranty.view_list')}
-            </span>
+          )}
+          </>
           )}
         </div>
-      </button>
+      </div>
 
       {/* Paper-this-month mini card under the warranty bar */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-3 2xl:grid-cols-4">

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { demoFilter } from '@/lib/demo-mode'
+import { siteFilterForUser } from '@/lib/auth'
 
 // Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
 export const maxDuration = 60
@@ -98,7 +100,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
   try {
+    // QA-ROUND-2026-09-16-E: scope to the caller's data. Previously this
+    // query had NO demo filter and NO site filter, so demo users saw real
+    // devices' warranty data (and vice versa) and site-restricted users saw
+    // every site. Same bug class as the unified-report demo leak fixed in
+    // QA-ROUND-2026-09-16-C.
     const devices = await db.device.findMany({
+      where: {
+        ...demoFilter(auth.user),
+        ...siteFilterForUser(auth.row),
+      },
       select: {
         id: true,
         assetCode: true,
