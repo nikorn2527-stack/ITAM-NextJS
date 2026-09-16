@@ -23133,3 +23133,39 @@ Stage Summary:
 - ✅ Paper cost coverage now complete across ALL views: overview (unchanged), detail table + CSV, custom export, ranking cards + CSV/Excel.
 - ✅ Settings banner polished with accessible full-width progress bar.
 - Next round candidates: i18n dictionary coverage for inline Thai strings (large); compare3 tab cost column; investigate first-mount key warning source if it reproduces.
+
+---
+Task ID: QA-ROUND-2026-09-16-C
+Agent: orchestrator (cron webDevReview)
+Task: Scheduled QA round — found & fixed 8 scoping crashes + Bun/Prisma Date-filter bug class; features: compare3 cost column, dashboard paper-cost KPI, real-data seed; killed recharts warning spam
+
+Work Log:
+- QA via agent-browser (admin login): clicked device row in จัดการอุปกรณ์ → error boundary "เกิดข้อผิดพลาด" → ReferenceError: deviceIsMeterable is not defined (bug from pre-restore commit a689503). Fixed by hoisting `const deviceIsMeterable = !!device?.meterRequired` to component scope in device-detail-sheet.tsx (was only inside findActionConfig). Verified: detail sheet opens, 0 errors.
+- Audited codebase for the same bug class (module-level helpers referencing component-scope vars) — found and fixed 7 MORE:
+  - material-cost-report.tsx: formatBaht/formatInt/formatMonthLabel used bare `lang` → crashed ต้นทุนวัสดุ module on open. Fixed via useI18nStore.getState().lang.
+  - unified-report-builder.ts: parseMonth + meters/maintenance label builders → /api/reports/unified?group=meters|maintenance returned {"error":"lang is not defined"}. Fixed with ReportLang param (default 'th') + localeOf helper.
+  - document-template.ts: renderPDFFromTemplate lang param (latent crash on PDF render).
+  - pending-users-section.tsx formatDate, wo-print-form.tsx formatDateTime/formatDateOnly (latent crashes), ui/chart.tsx ChartTooltipContent (landmine in unused shadcn component).
+- SECOND bug class discovered via dev.log: GET /api/itam/updates 500 — Prisma 6.19 + Bun runtime REJECTS JS Date objects in filter args ("Argument `_ref` is missing"); ISO-8601 STRINGS WITH Z work in both Node and Bun. Fixed ALL 10+ sites: updates route, unified workorders/approvals, report-builder audit, wo-cost-summary, cron/daily-report (+bonus: `warrantyExpiry` field doesn't exist — real field is warrantyEnd String; fixed with lexicographic ISO-date strings), itam/audit. All verified via curl.
+- Unified devices group 500: totalPurchaseValue.toFixed — Prisma Decimal + number. Fixed with Number() conversion.
+- Demo isolation gap in unified reports: builders saw ALL rows (admin got 20 = 12 real + 8 demo). Added optional user param + demoW() spread into all 18 query wheres; route passes auth.user. Verified: admin=12, demo_admin=8.
+- Dashboard bySite join bug: Device.site stores site CODE (UDH) but API matched by SiteName only → all real sites showed dev=0/sheets=0. Fixed by matching BOTH name and code (same approach as paper-analytics rates). Verified: UDH dev=8/฿2,034.50, NKP ฿962.45, KKN ฿1,249.15.
+- recharts "width(0) height(0)" warning spam (5-9 per navigation, from KeepAlivePage display:none + background refetch): created VisibleResponsiveContainer (sync offsetWidth check during render + ResizeObserver) and swapped into all 11 chart files (63 JSX sites) via script. Verified: 0 chart warnings across full module walk (was 5-9 per switch).
+- FEATURE compare3 cost: API now returns per-month + total cost per device using per-site rates; UI adds ต้นทุน (฿) column, per-month ฿ subtitle in month cells, sticky totals footer (รวมทั้งหมด N เครื่อง + per-month sums + ฿ total), CSV export incl. cost. Verified UI footer ฿12,978.80 == API sum exactly; KKN month math 582×0.55+180×3.2=฿896.10 exact.
+- FEATURE dashboard paper-cost KPI: new emerald ต้นทุนกระดาษ card (฿ total + avg ฿/แผ่น + per-site gradient progress bars with % labels), fed by extended bySite rows (paperBw/paperColor/paperCost). VLM review: "professional, production-ready, integrates perfectly". Bars hidden on <sm screens.
+- FEATURE real data: scripts/seed-real-data.ts (idempotent) — SiteAttributes UDH โรงพยาบาลศูนย์อุดรธานี (0.5/3.0), NKP นครพนม (0.45/2.8), KKN ขอนแก่น (0.55/3.2); 12 devices (asset codes SITE-TYPE-YEAR-SEQ, Thai departments, buildings/floors, warranty, IP, meter config); 10 WOs across all statuses/priorities; 54 meter readings (6 months, hospital-scale volumes: copiers heavy); 6 Department MasterItems. Admin now sees a full working system (was 0 devices/0 WOs/0 sites after restore seeded demo-only data).
+- Lint fixes: removed dead `const { lang } = useLang()` inside authHeaders (rules-of-hooks error) in demo-management-section/notification-log-section/pending-users-section; require('node:crypto') → top import in apple callback. Lint: 0 errors (114 pre-existing warnings unchanged).
+- tsc --noEmit clean; full e2e regression: admin + demo_admin module walks all green, 0 console errors, demo isolation intact (demo banner + HQ/BKK data for demo_admin; UDH/NKP/KKN for admin).
+
+Known issues (not fixed, documented):
+- Flaky one-time "unique key" React dev warning on first module mount — did NOT reproduce this round despite targeted hunting (hooked console.error across every unvisited module); remains a known minor.
+- 114 pre-existing lint warnings (unused vars, set-state-in-effect patterns) — untouched.
+- i18n dictionary coverage for inline Thai strings — still the big remaining refactor.
+- Prisma client + Bun: also regenerated prisma client during debugging (bunx prisma generate) — harmless, client was current.
+
+Stage Summary:
+- 3 bug CLASSES fixed: (1) component-scope leak ReferenceErrors ×8, (2) Bun/Prisma Date-in-filter ×10 sites + Decimal + phantom field, (3) demo isolation + site name/code join in reports/dashboard.
+- 3 features: compare3 cost (column+footer+CSV), dashboard cost KPI + per-site bars, real hospital-network dataset for admin.
+- Chart warning spam eliminated (11 files, new VisibleResponsiveContainer).
+- Commit a2f1cc5 pushed to main. lint 0 errors, tsc clean, e2e verified.
+- Next round candidates: i18n dictionary coverage (large); per-site cost trend line in dashboard (extend KPI with sparkline); audit-log date filter UI test; consider eslint --fix pass for the 114 warnings (mechanical, low risk).
