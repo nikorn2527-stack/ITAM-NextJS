@@ -142,13 +142,24 @@ export function ItamPaperAnalytics() {
   // Custom export dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
   const [customExportOpen, setCustomExportOpen] = React.useState(false)
 
-  // Sites list for filter
+  // Sites list for filter + per-site paper rates (CONSULTING-007)
+  // The rate map is keyed by BOTH siteName and siteCode so lookups work
+  // regardless of which form Device.site stores (imports vary).
   const [sites, setSites] = React.useState<string[]>([])
+  const siteRates = React.useRef<Map<string, { bw: number; color: number }>>(new Map())
   React.useEffect(() => {
     fetch('/api/itam/sites')
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((j: { sites: Array<{ siteName: string | null }> }) => {
+      .then((j: { sites: Array<{ siteName: string | null; siteCode?: string | null; paperRateBw?: number | null; paperRateColor?: number | null }> }) => {
         setSites(j.sites.map((s) => s.siteName).filter((s): s is string => !!s))
+        const rates = new Map<string, { bw: number; color: number }>()
+        for (const s of j.sites) {
+          const bw = s.paperRateBw ?? 0.5
+          const color = s.paperRateColor ?? 2.0
+          if (s.siteName) rates.set(s.siteName, { bw, color })
+          if (s.siteCode) rates.set(s.siteCode, { bw, color })
+        }
+        siteRates.current = rates
       })
       .catch(() => setSites([]))
   }, [])
@@ -315,13 +326,13 @@ ${kpiHtml}
     toast.success(`ส่งออก Excel ${rows.length} แถว`)
   }
 
-  // ── Custom Export handler ── (Task ID: FIX-1-2-EXPORT-PRINT)
+  // ── Custom Export handler ── (Task ID: FIX-1-2-EXPORT-PRINT, CONSULTING-007)
   // Fetches the FULL detail view (all rows for the current filter, ignoring
   // the in-page pagination) and maps each row to the column keys.
   // • เดือน: shown as the month range that was filtered
-  // • ต้นทุน: estimated as bw*0.5 + color*3.0 baht (placeholder rates —
-  //   the API doesn't currently expose per-page cost; this gives the user
-  //   a rough "order of magnitude" figure that they can refine later).
+  // • ต้นทุน: per-site rates from SiteAttribute (PaperRateBW / PaperRateColor —
+  //   single source of truth, configurable in ตั้งค่าระบบ → จัดการสาขา).
+  //   Falls back to the schema defaults (0.5 / 2.0) when a site has no rate.
   const handleCustomExport = React.useCallback(
     async (columns: ExportColumn[], format: ExportFormat) => {
       const p = new URLSearchParams(baseParams)
@@ -339,7 +350,10 @@ ${kpiHtml}
       const rows: Record<string, unknown>[] = allRows.map((r) => {
         const bw = r.bw ?? 0
         const color = r.color ?? 0
-        const cost = bw * 0.5 + color * 3.0
+        // CONSULTING-007: per-site paper rates from SiteAttribute instead of
+        // the old hardcoded bw*0.5 + color*3.0 placeholder.
+        const rate = siteRates.current.get(r.site ?? '') ?? { bw: 0.5, color: 2.0 }
+        const cost = bw * rate.bw + color * rate.color
         return {
           month: monthLabel,
           site: r.site ?? '',

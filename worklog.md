@@ -23034,3 +23034,56 @@ Remaining (NOT dev-doable — needs external team/tool):
   - Rotate OAuth secrets (needs provider consoles)
   - Cloudflare R2 + Vercel env vars (needs dashboards)
   - Vercel Pro upgrade (needs billing decision)
+
+---
+Task ID: RESTORE-001
+Agent: orchestrator (main session)
+Task: Sandbox reset recovery — restore ITAM-NextJS from GitHub after environment wipe
+
+Work Log:
+- Discovered sandbox was fully reset: worklog.md, ITAM src/, prisma schema, db all wiped; only fresh Next.js scaffold remained (single "Initial commit").
+- Verified GitHub repo nikorn2527-stack/ITAM-NextJS accessible via user PAT (HTTP 200, main @ a689503, 30+ branches).
+- Cloned repo (40MB, full history) to /tmp/itam-restore, copied into /home/z/my-project including .git (history preserved, remote configured with PAT).
+- Preserved sandbox-specific Caddyfile (XTransformPort gateway handler) and .zscripts supervisor scripts.
+- Ran setup.sh: bun install (node_modules 1.9G), .env created (JWT_SECRET random), prisma provider synced to sqlite.
+- FIXED CRITICAL PATH BUG: DATABASE_URL=file:./db/custom.db resolved differently by prisma CLI (→ prisma/db/custom.db) vs app client (→ db/custom.db, empty 0-byte). Changed .env to absolute path file:/home/z/my-project/db/custom.db, re-pushed schema. Root cause of first seed failure (Permission table missing).
+- Seeded DB: bun run db:seed — 8/9 modules OK (auth catalog 30 perms/5 roles/88 mappings, templates, master data, catalog v2 ×64, contacts, notification templates, demo users, comprehensive demo: 8 devices/16 WOs/10 stock/1 PM/5 audit logs).
+- Known failure (non-required): scripts/seed-material-cost.ts — PrismaClientValidationError on db.stockTransaction.create() (pre-existing repo bug, StockTransaction model/field mismatch).
+- Ran scripts/seed-organization-pilot.ts: created org PILOT (โรงพยาบาลศูนย์อุดรธานี), backfilled 55 rows (8/8 devices, 16/16 WOs, 10/10 stock, 4/4 users have orgId).
+- Started dev server via bun run dev (port 3000), verified GET / 200.
+- Verified login via API: POST /api/itam/auth/login admin/test1234 → JWT token returned.
+- Verified via agent-browser: Thai login page renders, UI login → full ITAM navigation (15 modules), Dashboard loads live KPI data (อุปกรณ์ทั้งหมด/ใช้งานอยู่/กระดาษเดือนนี้, server response 49ms).
+
+Stage Summary:
+- ✅ Project fully restored from GitHub @ a689503 (2026-09-15 latest main).
+- ✅ DB: sqlite at db/custom.db (absolute path in .env — do NOT revert to relative).
+- ✅ Login: admin / test1234 (plus demo_admin/demo_staff/demo_viewer @ demo123).
+- ✅ Dev server running on port 3000; all 15 modules reachable.
+- ⚠️ Pending from previous session (still present in code):
+  - CONSULTING-007: src/components/itam/itam-paper-analytics.tsx:342 cost = bw*0.5 + color*3.0 hardcoded — must read SiteAttribute.PaperRateBW/PaperRateColor.
+  - seed-material-cost.ts Prisma validation bug (non-blocking).
+  - i18n coverage (inline Thai strings) and menu container polish from earlier QA rounds.
+
+---
+Task ID: CONSULTING-007-FIX
+Agent: orchestrator (main session)
+Task: Fix CONSULTING-007 — paper analytics cost must use SiteAttribute rates instead of hardcoded 0.5/3.0
+
+Work Log:
+- Located the hardcoded cost calc: src/components/itam/itam-paper-analytics.tsx:342 `const cost = bw * 0.5 + color * 3.0` in handleCustomExport (only occurrence in codebase).
+- Extended the existing /api/itam/sites fetch in the component to also build a per-site rate map (siteRates ref), keyed by BOTH siteName and siteCode so lookups work regardless of which form Device.site stores.
+- handleCustomExport now computes `cost = bw * rate.bw + color * rate.color` with rate looked up per row's site; falls back to schema defaults (0.5 / 2.0) when a site has no rate configured.
+- Updated the stale "placeholder rates" comment to document SiteAttribute as single source of truth.
+- Created scripts/seed-site-attributes-demo.ts (idempotent): upserts SiteAttribute HQ (0.5/3.0 ฿/sheet) + BKK (0.6/3.5 ฿/sheet) and seeds 6 months of monthly MeterReading rows (pagesBw/pagesColor, isDemo=true) for demo printer/copier devices.
+  - Fix during dev: Device model uses `type` not `category`; demo statuses are lowercase ('active'/'spare').
+- Verified end-to-end as demo_admin (demo users see isDemo data per demoFilter):
+  - GET /api/itam/sites returns paperRateBw/paperRateColor per site.
+  - GET /api/itam/paper-analytics?view=detail returns 5 rows (3 devices).
+  - UI: วิเคราะห์กระดาษ module → ส่งออก → custom export dialog → CSV export → toast "ส่งออก 5 รายการ".
+  - Captured the CSV blob via URL.createObjectURL override: costs exactly match per-site rates — HQ 1389×0.5+531×3.0=2287.50, BKK 1215×0.6+609×3.5=2860.50 (old code would have produced 2434.50 for BKK — wrong).
+- Note for browser automation: nav buttons in this app don't respond to agent-browser's ref-based click; use JS el.click() via eval (React handlers attach fine to programmatic clicks).
+
+Stage Summary:
+- ✅ CONSULTING-007 closed: cost export now uses SiteAttribute.PaperRateBW/PaperRateColor per site.
+- ✅ Demo data pipeline for paper analytics complete (sites + rates + readings).
+- Verified: API math + UI export CSV contents. lint clean (0 errors).

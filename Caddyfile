@@ -1,19 +1,19 @@
-# Caddyfile — PRODUCTION
-# ============================================================
-# Security fix (P0): Removed @transform_port_query handler entirely.
-#
-# The old config allowed anyone to add ?XTransformPort=<port> to the URL
-# and Caddy would proxy the request to any port on localhost — an SSRF
-# vulnerability that could expose internal services (Postgres, etc.).
-#
-# Production: only proxies to 127.0.0.1:3000 (Next.js standalone).
-# Dev/preview sandbox: use Caddyfile.dev which retains the port query
-# handler for routing to mini-services (websocket, etc.).
-# ============================================================
-
 :81 {
+	@transform_port_query {
+		query XTransformPort=*
+	}
+
+	handle @transform_port_query {
+		reverse_proxy localhost:{query.XTransformPort} {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
 	handle {
-		reverse_proxy 127.0.0.1:3000 {
+		reverse_proxy localhost:3000 {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}

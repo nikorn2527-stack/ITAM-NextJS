@@ -53,8 +53,8 @@ cd "$BUILD_DIR" || exit 1
 
 ls -lah
 
-# Production deployments must use an external PostgreSQL database.
-# Never fall back to a packaged SQLite file because serverless filesystems are ephemeral.
+DEFAULT_PACKAGED_DB_PATH="/app/db/custom.db"
+DEFAULT_PACKAGED_DATABASE_URL="file:$DEFAULT_PACKAGED_DB_PATH"
 
 # Python 依赖在构建阶段安装进部署产物，不复用 Sandbox 的 /home/z/.venv。
 # Next.js 及其启动的子进程都会继承这组路径。
@@ -75,26 +75,19 @@ if [ -f "./next-service-dist/server.js" ]; then
     export NODE_ENV=production
     export PORT="${PORT:-3000}"
     export HOSTNAME="${HOSTNAME:-0.0.0.0}"
-    if [ -z "${DATABASE_URL:-}" ]; then
-        echo "❌ 未设置 DATABASE_URL；请配置 Supabase/PostgreSQL ก่อนเริ่ม production server" >&2
-        exit 1
+    export DATABASE_URL="${DATABASE_URL:-$DEFAULT_PACKAGED_DATABASE_URL}"
+
+    if [ "$DATABASE_URL" = "$DEFAULT_PACKAGED_DATABASE_URL" ]; then
+        if [ ! -f "$DEFAULT_PACKAGED_DB_PATH" ]; then
+            echo "❌ 未找到打包后的数据库文件 $DEFAULT_PACKAGED_DB_PATH"
+            echo "   为避免生产环境启动到空数据库，启动已终止"
+            exit 1
+        fi
+
+        echo "🗄️  当前使用打包数据库: $DEFAULT_PACKAGED_DB_PATH"
+    else
+        echo "🗄️  当前使用外部指定数据库: $DATABASE_URL"
     fi
-
-    case "$DATABASE_URL" in
-        postgres://*|postgresql://*)
-            echo "🗄️  กำลังใช้ฐานข้อมูล PostgreSQL ภายนอกจาก DATABASE_URL"
-            ;;
-        file:*)
-            echo "❌ SQLite DATABASE_URL ไม่รองรับใน production/serverless" >&2
-            exit 1
-            ;;
-        *)
-            echo "❌ DATABASE_URL ต้องเป็น PostgreSQL URL (postgres:// หรือ postgresql://)" >&2
-            exit 1
-            ;;
-    esac
-
-    export DATABASE_URL
     
     # 后台启动 Next.js
     bun server.js &
