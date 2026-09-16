@@ -23087,3 +23087,26 @@ Stage Summary:
 - ✅ CONSULTING-007 closed: cost export now uses SiteAttribute.PaperRateBW/PaperRateColor per site.
 - ✅ Demo data pipeline for paper analytics complete (sites + rates + readings).
 - Verified: API math + UI export CSV contents. lint clean (0 errors).
+
+---
+Task ID: QA-ROUND-2026-09-16-A
+Agent: orchestrator (cron webDevReview)
+Task: Scheduled QA round — fix console errors, fix seed bug, add paper-cost UI feature + activity feed improvements
+
+Work Log:
+- QA via agent-browser (demo_admin): found 12× "Encountered two children with the same key `undefined-undefined`" + 1× "script tag while rendering React component" on every page load (login, dashboard, 404).
+- BUG FIX #1 (React duplicate keys): itam-dashboard.tsx activity feed read a.kind/a.id/a.label/a.sub but SSE /api/realtime/sse returns {action, entity, summary, actor, createdAt} (typed in use-realtime.ts) → all 5 items got key "undefined-undefined" and empty labels. Now renders summary + actor with key `${createdAt}-${action}-${idx}`, entity-colored dots (Device teal / WorkOrder orange / MeterReading sky / StockItem amber / other violet). Verified: items show real content, 0 key errors.
+- BUG FIX #2 (script tag error): @vercel/analytics + @vercel/speed-insights render <script> via React.createElement — React 19 dev flags it. layout.tsx now mounts Analytics/SpeedInsights only when NODE_ENV=production (they no-op in dev anyway). Verified: 0 vercel scripts in DOM.
+- BUG FIX #3 (seed-material-cost.ts): "Invalid value for argument `constructor`" — item.unitCost is Prisma Decimal; Decimal × number yields a Decimal instance that fails JSON serialization, and `as never` hid the type error. Fixed by converting to Number() before arithmetic; removed `as never`. Seed now completes: 6 transactions created (previously aborted every run).
+- FEATURE #1 (paper analytics detail tab): added "ต้นทุน (฿)" column computed from SiteAttribute rates (siteRates map from CONSULTING-007 fix) with per-row rate tooltip; emerald color to distinguish money from sheet counts; sticky bottom totals row (รวมทั้งหมด: bw/color/total/cost sums with backdrop-blur); CSV export of the table now includes cost column. Verified in UI: HQ 2,287.50 / BKK 2,860.50 / footer total 10,462.50 — matches export CSV math exactly. colSpan updated 10→11.
+- FEATURE #2 (activity feed): SSE route now fetches 15 recent audit logs and prefers non-LOGIN events (LOGIN noise flooded the panel — every session start logs one); falls back to LOGIN-only for brand-new systems. Dashboard items now show relative time badge ("24 นาทีที่แล้ว" via existing relativeTime helper from reports/shared.tsx) with full timestamp tooltip + actor (hidden on small screens). Verified: feed shows business events (จดมิเตอร์, Sync, แก้ไขใบงาน, ลบสต็อก).
+- Verified after all changes: fresh reload = 0 errors except 1 remaining dev-only warning.
+- lint on changed files: 0 errors (2 pre-existing warnings).
+
+Known issues (documented, not fixed):
+- 1× "Encountered a script tag" warning remains: next-themes 0.4.6 (latest) renders its no-FOUC script via createElement("script") — React 19 dev-mode cosmetic warning, upstream known issue, no functional impact, does not appear in production. Do NOT replace next-themes for this.
+- Login page shows PWA dev-mode clean-reload once per browser profile (sessionStorage-guarded) — expected dev behavior.
+
+Stage Summary:
+- 3 bugs fixed (React keys, script-tag noise ×1 source, seed Decimal serialization), 2 features added (paper cost column + totals footer, activity feed de-noise + relative time), all verified e2e in browser.
+- Next round candidates: i18n dictionary coverage for inline Thai; settings menu container polish ("เข้าสู่ระบบภายนอก / โปรไฟล์ของฉัน" outside white container — from earlier QA rounds); consider adding cost column to ranking tab too.

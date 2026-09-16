@@ -97,8 +97,18 @@ export default function RootLayout({
           <PwaRegistration />
         </Providers>
         <Toaster richColors position="top-right" />
-        <Analytics />
-        <SpeedInsights />
+        {/* Analytics/SpeedInsights render a <script> element that React 19
+            flags in dev mode ("Encountered a script tag while rendering
+            React component"). They no-op in dev anyway (debug mode, no
+            requests sent), so only mount them in production to keep the
+            dev console clean for QA. Known upstream issue:
+            vercel/analytics#xxx with React 19. */}
+        {process.env.NODE_ENV === "production" && (
+          <>
+            <Analytics />
+            <SpeedInsights />
+          </>
+        )}
       </body>
     </html>
   );

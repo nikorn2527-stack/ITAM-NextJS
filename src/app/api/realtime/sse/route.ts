@@ -117,8 +117,12 @@ async function getKpi() {
         warrantyEnd: { not: null, gte: todayStr, lte: futureStr },
       },
     }).catch(() => 0),
+    // Fetch 15 recent logs, then prefer business events over LOGIN noise:
+    // LOGIN rows flood the feed (every session start logs one) and make
+    // the "กิจกรรมล่าสุด" panel useless in dev/QA. Take up to 5 non-LOGIN
+    // entries first; fall back to LOGIN entries only if nothing else exists.
     db.auditLog.findMany({
-      take: 5,
+      take: 15,
       orderBy: { createdAt: 'desc' },
       select: { action: true, entity: true, summary: true, actor: true, createdAt: true },
     }).catch(() => []),
@@ -127,13 +131,19 @@ async function getKpi() {
   // Compute low stock client-side (avoid complex Prisma comparison)
   const lowStock = lowStockRows.filter(s => s.quantity <= (s.minQuantity ?? 0)).length
 
+  // De-noise: prefer non-LOGIN events, fallback to LOGIN-only when the
+  // system is brand new and has nothing else to show.
+  const nonLogin = recentActivities.filter(a => a.action !== 'LOGIN')
+  const loginOnly = recentActivities.filter(a => a.action === 'LOGIN')
+  const feed = (nonLogin.length > 0 ? nonLogin : loginOnly).slice(0, 5)
+
   return {
     devices,
     workOrders,
     pendingWO,
     lowStock,
     warrantyExpiring,
-    recentActivities: recentActivities.map(a => ({
+    recentActivities: feed.map(a => ({
       action: a.action,
       entity: a.entity,
       summary: String(a.summary || '').slice(0, 100),

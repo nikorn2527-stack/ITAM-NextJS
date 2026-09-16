@@ -63,6 +63,7 @@ import {
   type WidgetId,
 } from './dashboard-widget-layout'
 import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
+import { relativeTime } from './reports/shared'
 
 interface SiteRow { siteCode: string; siteName: string | null; deviceCount: number; activeCount: number; paperSheets: number }
 interface DashboardData {
@@ -1260,16 +1261,27 @@ ${kpiHtml}
                     <Activity className="h-3 w-3" /> {t('dash.realtime.recent_events')}
                   </div>
                   <ul className="max-h-24 overflow-y-auto pr-1 space-y-0.5 text-[11px] text-slate-600 dark:text-slate-300">
-                    {realtime.kpi.recentActivities.slice(0, 5).map((a) => (
-                      <li key={`${a.kind}-${a.id}`} className="flex items-center gap-1.5 truncate">
+                    {realtime.kpi.recentActivities.slice(0, 5).map((a, idx) => (
+                      <li key={`${a.createdAt}-${a.action}-${idx}`} className="flex items-center gap-1.5 truncate">
                         <span className={cn(
                           'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                          a.kind === 'device' ? 'bg-teal-500'
-                            : a.kind === 'workorder' ? 'bg-orange-500'
-                              : 'bg-violet-500',
+                          a.entity === 'Device' ? 'bg-teal-500'
+                            : a.entity === 'WorkOrder' ? 'bg-orange-500'
+                              : a.entity === 'MeterReading' ? 'bg-sky-500'
+                                : a.entity === 'StockItem' ? 'bg-amber-500'
+                                  : 'bg-violet-500',
                         )} />
-                        <span className="truncate font-medium">{a.label}</span>
-                        {a.sub && <span className="ml-auto shrink-0 text-slate-400 dark:text-slate-500">· {a.sub}</span>}
+                        <span className="truncate font-medium">{a.summary || a.action}</span>
+                        <span className="ml-auto flex shrink-0 items-center gap-1 text-slate-400 dark:text-slate-500">
+                          {a.actor && <span className="hidden max-w-24 truncate lg:inline" title={a.actor}>· {a.actor}</span>}
+                          <time
+                            className="rounded bg-slate-100 px-1 py-0.5 text-[9px] tabular-nums dark:bg-slate-800 dark:text-slate-400"
+                            dateTime={new Date(a.createdAt).toISOString()}
+                            title={new Date(a.createdAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
+                          >
+                            {relativeTime(new Date(a.createdAt).toISOString())}
+                          </time>
+                        </span>
                       </li>
                     ))}
                   </ul>

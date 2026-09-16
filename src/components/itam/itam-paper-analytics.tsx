@@ -697,11 +697,16 @@ ${kpiHtml}
                   assetNo: r.assetCode, brand: r.brand ?? '', model: r.model ?? '', site: r.site ?? '',
                   building: r.building ?? '', floor: r.floor ?? '', department: r.department ?? '',
                   bw: r.bw, color: r.color, total: r.total, monthCount: r.monthCount,
+                  cost: (() => {
+                    const rate = siteRates.current.get(r.site ?? '') ?? { bw: 0.5, color: 2.0 }
+                    return (r.bw * rate.bw + r.color * rate.color).toFixed(2)
+                  })(),
                 })), `paper-detail-${dateStamp()}.csv`, [
                   { key: 'assetNo', label: 'รหัส' }, { key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' },
                   { key: 'site', label: 'สาขา' }, { key: 'building', label: 'อาคาร' }, { key: 'floor', label: 'ชั้น' },
                   { key: 'department', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' },
                   { key: 'total', label: 'รวม' }, { key: 'monthCount', label: 'จำนวนเดือนที่จด' },
+                  { key: 'cost', label: 'ต้นทุน (฿)' },
                 ])}>
                   <FileSpreadsheet className="h-3.5 w-3.5" /> CSV
                 </Button>
@@ -720,13 +725,37 @@ ${kpiHtml}
                         <TableHead className="text-right">ขาวดำ</TableHead>
                         <TableHead className="text-right">สี</TableHead>
                         <TableHead className="text-right">รวม</TableHead>
+                        <TableHead className="text-right">ต้นทุน (฿)</TableHead>
                         <TableHead className="text-right">เดือนที่จด</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {detailQuery.data.rows.length === 0 ? (
-                        <TableRow><TableCell colSpan={10} className="py-8 text-center text-slate-400">ไม่มีข้อมูล</TableCell></TableRow>
-                      ) : detailQuery.data.rows.map((r) => (
+                        <TableRow><TableCell colSpan={11} className="py-8 text-center text-slate-400">ไม่มีข้อมูล</TableCell></TableRow>
+                      ) : (
+                        <>
+                        {(() => {
+                          // Footer totals row (computed once, rendered last)
+                          const rows = detailQuery.data!.rows
+                          const sumBw = rows.reduce((s, r) => s + (r.bw ?? 0), 0)
+                          const sumColor = rows.reduce((s, r) => s + (r.color ?? 0), 0)
+                          const sumTotal = rows.reduce((s, r) => s + (r.total ?? 0), 0)
+                          const sumCost = rows.reduce((s, r) => {
+                            const rate = siteRates.current.get(r.site ?? '') ?? { bw: 0.5, color: 2.0 }
+                            return s + (r.bw ?? 0) * rate.bw + (r.color ?? 0) * rate.color
+                          }, 0)
+                          const n = lang === 'th' ? 'th-TH' : 'en-GB'
+                          const totalRow = (
+                            <TableRow className="sticky bottom-0 z-10 bg-slate-100/95 font-semibold backdrop-blur-sm dark:bg-slate-900/95">
+                              <TableCell colSpan={6} className="text-xs text-slate-500 dark:text-slate-400">รวมทั้งหมด ({rows.length} เครื่อง)</TableCell>
+                              <TableCell className="text-right tabular-nums text-xs">{sumBw.toLocaleString(n)}</TableCell>
+                              <TableCell className="text-right tabular-nums text-xs">{sumColor.toLocaleString(n)}</TableCell>
+                              <TableCell className="text-right tabular-nums text-xs text-[#f97316]">{sumTotal.toLocaleString(n)}</TableCell>
+                              <TableCell className="text-right tabular-nums text-xs text-emerald-600 dark:text-emerald-400">{sumCost.toLocaleString(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                              <TableCell />
+                            </TableRow>
+                          )
+                          const bodyRows = rows.map((r) => (
                         <TableRow key={r.assetCode} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50" title={`ดูรายละเอียด ${r.assetCode}`}>
                           <TableCell className="font-mono text-xs">{r.assetCode}</TableCell>
                           <TableCell className="text-xs">
@@ -740,11 +769,21 @@ ${kpiHtml}
                           <TableCell className="text-right tabular-nums text-xs">{(r.bw ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</TableCell>
                           <TableCell className="text-right tabular-nums text-xs">{(r.color ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</TableCell>
                           <TableCell className="text-right tabular-nums text-xs font-semibold text-[#f97316]">{(r.total ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</TableCell>
+                          <TableCell className="text-right tabular-nums text-xs text-emerald-600 dark:text-emerald-400" title={`อัตรา: ${siteRates.current.get(r.site ?? '')?.bw ?? 0.5}/${siteRates.current.get(r.site ?? '')?.color ?? 2.0} ฿/แผ่น`}>
+                            {(() => {
+                              const rate = siteRates.current.get(r.site ?? '') ?? { bw: 0.5, color: 2.0 }
+                              return (r.bw * rate.bw + r.color * rate.color).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                            })()}
+                          </TableCell>
                           <TableCell className="text-right tabular-nums text-xs">
                             <Badge variant="outline" className="font-mono text-[10px]">{r.monthCount}/{detailQuery.data!.months.length}</Badge>
                           </TableCell>
                         </TableRow>
-                      ))}
+                          ))
+                          return <>{bodyRows}{totalRow}</>
+                        })()}
+                        </>
+                      )}
                     </TableBody>
                   </Table>
                 </div>

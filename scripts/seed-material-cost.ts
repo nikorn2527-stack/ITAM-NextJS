@@ -131,6 +131,11 @@ async function main() {
     let txnCreated = 0
     for (const t of txns) {
       const item = stockItems.find((i) => i.id === t.stockItemId)!
+      // Prisma Decimal fields accept plain numbers; multiplying a Prisma
+      // Decimal by a number yields a Decimal instance that fails JSON
+      // serialization ("Invalid value for argument `constructor`").
+      // Convert to plain numbers explicitly.
+      const unitCostNum = item.unitCost == null ? null : Number(item.unitCost)
       await db.stockTransaction.create({
         data: {
           stockItemId: t.stockItemId,
@@ -140,13 +145,13 @@ async function main() {
           quantity: t.qty,
           unit: 'ขวด',
           balanceAfter: 0,
-          unitCost: item.unitCost ?? null,
-          cost: (item.unitCost ?? 0) * t.qty,
+          unitCost: unitCostNum,
+          cost: (unitCostNum ?? 0) * t.qty,
           reason: 'เบิกเพื่อใช้งาน (seed)',
           txnDate: today,
           sourceKey,
           isDemo: true,
-        } as never,
+        },
       })
       txnCreated++
     }
