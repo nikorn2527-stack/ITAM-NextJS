@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, getAllowedSites } from '@/lib/auth'
 import { ACTIVE_STATUS_VARIANTS, bucketizeStatusGroups } from '@/lib/status-utils'
-import { demoFilter } from '@/lib/demo-mode'
+import { demoFilter, isDemoUser } from '@/lib/demo-mode'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 // GET /api/itam/dashboard — optimized dashboard stats from real data
@@ -45,6 +45,16 @@ export async function GET(req: NextRequest) {
     // ── Demo filter: demo users see ONLY demo data, real users see ONLY real data
     const siteFilter = { ...siteFilterForUser(user), ...demoFilter(user) }
     const userSites = getAllowedSites(user)
+
+    // Raw-SQL mirror of siteFilter for the trend query (which joins "Device"
+    // manually). Without this, the 6-month trend ignored BOTH the site and the
+    // demo scope (demo users saw real-data trends and vice versa).
+    // NOTE: starts with AND — it is appended inside the query's WHERE clause.
+    const trendDeviceFilter = Prisma.sql`
+      AND d."id" IS NOT NULL
+        AND d."isDemo" = ${isDemoUser(user)}
+        ${userSites === 'ALL' ? Prisma.empty : Prisma.sql`AND d."site" IN (${Prisma.join(userSites)})`}
+    `
 
     const now = new Date()
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -115,70 +125,33 @@ export async function GET(req: NextRequest) {
         },
       }),
 
-      // 4) Paper usage trend (6 months) — DELTA calculation per month.
-      //    For each month, get the latest reading and the reading before it,
-      //    then compute delta = latest - previous (per device), then sum.
+      // 4) Paper usage trend (6 months) — SUM of per-reading usage deltas,
+      //    grouped by month + site.
+      //    pagesBw/pagesColor on each MeterReading row ALREADY store that
+      //    reading's usage delta (computed at POST time — see the meter-readings
+      //    route), so monthly usage = plain SUM per readingMonth. This matches
+      //    the bySite stats and the paper-analytics module exactly.
       //
-      //    SQLite-compatible: uses ROW_NUMBER() window function instead of
-      //    PostgreSQL's SELECT DISTINCT ON, and MAX(0, ...) instead of GREATEST.
-      //    SQLite has supported window functions since 3.25 (Sep 2018).
+      //    (Previous implementation subtracted the previous reading's pagesBw
+      //    from the latest one — i.e. the MONTH-OVER-MONTH CHANGE in usage,
+      //    not the usage itself — so the trend chart showed ~300 sheets/month
+      //    when actual usage was ~4,400/month. Replaced with the SUM below.)
+      //
+      //    Grouping by d."site" as well lets us price each month at the
+      //    CORRECT per-site paper rate (SiteAttribute) for the cost trend.
       db.$queryRaw`
-        WITH ranked_latest AS (
-          SELECT
-            mr."deviceId",
-            mr."readingMonth",
-            mr."pagesBw" as latest_bw,
-            mr."pagesColor" as latest_color,
-            mr."readingDate",
-            ROW_NUMBER() OVER (
-              PARTITION BY mr."deviceId", mr."readingMonth"
-              ORDER BY mr."readingDate" DESC
-            ) as rn
-          FROM "MeterReading" mr
-          WHERE mr."readingMonth" IN (${Prisma.join(trendMonthKeys)})
-            AND mr."readingType" IN ('MONTHLY', 'CHECKOUT', 'RETURN')
-            AND (mr."pagesBw" > 0 OR mr."pagesColor" > 0)
-        ),
-        monthly_latest AS (
-          SELECT "deviceId", "readingMonth", latest_bw, latest_color, "readingDate"
-          FROM ranked_latest
-          WHERE rn = 1
-        ),
-        ranked_previous AS (
-          SELECT
-            ml."deviceId",
-            ml."readingMonth",
-            mr."pagesBw" as prev_bw,
-            mr."pagesColor" as prev_color,
-            ROW_NUMBER() OVER (
-              PARTITION BY ml."deviceId", ml."readingMonth"
-              ORDER BY mr."readingDate" DESC
-            ) as rn
-          FROM monthly_latest ml
-          JOIN "MeterReading" mr ON mr."deviceId" = ml."deviceId"
-            AND mr."readingDate" < ml."readingDate"
-            AND mr."readingType" IN ('MONTHLY', 'CHECKOUT', 'RETURN')
-            AND (mr."pagesBw" > 0 OR mr."pagesColor" > 0)
-        ),
-        monthly_previous AS (
-          SELECT "deviceId", "readingMonth", prev_bw, prev_color
-          FROM ranked_previous
-          WHERE rn = 1
-        )
         SELECT
-          ml."readingMonth" as readingMonth,
-          COALESCE(SUM(
-            MAX(0, ml.latest_bw - COALESCE(mp.prev_bw, 0))
-          ), 0) as delta_bw,
-          COALESCE(SUM(
-            MAX(0, ml.latest_color - COALESCE(mp.prev_color, 0))
-          ), 0) as delta_color
-        FROM monthly_latest ml
-        LEFT JOIN monthly_previous mp
-          ON mp."deviceId" = ml."deviceId"
-          AND mp."readingMonth" = ml."readingMonth"
-        GROUP BY ml."readingMonth"
-        ORDER BY ml."readingMonth"
+          mr."readingMonth" as readingMonth,
+          d."site" as deviceSite,
+          COALESCE(SUM(mr."pagesBw"), 0) as delta_bw,
+          COALESCE(SUM(mr."pagesColor"), 0) as delta_color
+        FROM "MeterReading" mr
+        LEFT JOIN "Device" d ON d."id" = mr."deviceId"
+        WHERE mr."readingMonth" IN (${Prisma.join(trendMonthKeys)})
+          AND mr."readingType" IN ('MONTHLY', 'CHECKOUT', 'RETURN')
+          ${trendDeviceFilter}
+        GROUP BY mr."readingMonth", d."site"
+        ORDER BY mr."readingMonth"
       `,
 
       // 5) Meter-required device count — bug DATA-06 fix: use ACTIVE_STATUS_VARIANTS
@@ -219,15 +192,33 @@ export async function GET(req: NextRequest) {
     const paperThisMonth =
       (paperThisMonthRows._sum.pagesBw ?? 0) + (paperThisMonthRows._sum.pagesColor ?? 0)
 
-    // ── Paper trend (6 months) — DELTA per month ──
-    const trendMap: Record<string, number> = {}
-    for (const g of paperTrendGroups as { readingMonth: string; delta_bw: bigint; delta_color: bigint }[]) {
+    // ── Paper trend (6 months) — DELTA per month, per device ──
+    // Per-device rows let us compute BOTH sheet totals and money cost using
+    // each device's site paper rates (SiteAttribute). Rates fall back to the
+    // schema defaults (0.5 ฿/BW sheet, 2.0 ฿/color sheet) when a site has no
+    // rate configured. Device.site may hold site CODE or NAME → map has both.
+    const siteRateMap = new Map<string, { bw: number; color: number }>()
+    for (const s of sites as Array<{ SiteCode: string | null; SiteName: string | null; PaperRateBW: number | null; PaperRateColor: number | null }>) {
+      const bw = s.PaperRateBW ?? 0.5
+      const color = s.PaperRateColor ?? 2.0
+      if (s.SiteName) siteRateMap.set(s.SiteName, { bw, color })
+      if (s.SiteCode) siteRateMap.set(s.SiteCode, { bw, color })
+    }
+    const trendSheets: Record<string, number> = {}
+    const trendCost: Record<string, number> = {}
+    for (const g of paperTrendGroups as Array<{ readingMonth: string; deviceSite: string | null; delta_bw: number | bigint; delta_color: number | bigint }>) {
       const k = g.readingMonth || ''
-      if (k) trendMap[k] = (trendMap[k] || 0) + Number(g.delta_bw) + Number(g.delta_color)
+      if (!k) continue
+      const bw = Number(g.delta_bw) || 0
+      const color = Number(g.delta_color) || 0
+      trendSheets[k] = (trendSheets[k] || 0) + bw + color
+      const rate = (g.deviceSite ? siteRateMap.get(g.deviceSite) : undefined) ?? { bw: 0.5, color: 2.0 }
+      trendCost[k] = (trendCost[k] || 0) + bw * rate.bw + color * rate.color
     }
     const paperTrend = trendMonths.map((m) => ({
       month: m.label,
-      sheets: trendMap[m.key] || 0,
+      sheets: trendSheets[m.key] || 0,
+      cost: Math.round((trendCost[m.key] || 0) * 100) / 100,
     }))
 
     // ── Recent activity ────────────────────────────────────────────────────
@@ -330,17 +321,22 @@ export async function GET(req: NextRequest) {
       bySite = visibleSites.map((s) => {
         const siteName = s.SiteName || ''
         const siteCode = s.SiteCode || ''
-        // Devices may be keyed under the site's NAME or its CODE — sum both.
-        const bw = (siteBwMap[siteName] || 0) + (siteBwMap[siteCode] || 0)
-        const color = (siteColorMap[siteName] || 0) + (siteColorMap[siteCode] || 0)
+        // Devices may be keyed under the site's NAME or its CODE — read both
+        // keys, but DEDUPE when they're identical. Demo sites use
+        // SiteName == SiteCode ("HQ"/"BKK"), which previously double-counted
+        // their device/paper/cost stats (QA-ROUND-2026-09-16-D).
+        const siteKeys = siteName === siteCode ? [siteName] : [siteName, siteCode]
+        const sumMap = (m: Record<string, number>) => siteKeys.reduce((a, k) => a + (m[k] || 0), 0)
+        const bw = sumMap(siteBwMap)
+        const color = sumMap(siteColorMap)
         const rateBw = s.PaperRateBW == null ? 0.5 : Number(s.PaperRateBW)
         const rateColor = s.PaperRateColor == null ? 2.0 : Number(s.PaperRateColor)
         return {
           siteCode: s.SiteCode,
           siteName,
-          deviceCount: (deviceCountMap[siteName] || 0) + (deviceCountMap[siteCode] || 0),
-          activeCount: (activeCountMap[siteName] || 0) + (activeCountMap[siteCode] || 0),
-          paperSheets: (sitePaperMap[siteName] || 0) + (sitePaperMap[siteCode] || 0),
+          deviceCount: sumMap(deviceCountMap),
+          activeCount: sumMap(activeCountMap),
+          paperSheets: sumMap(sitePaperMap),
           paperBw: bw,
           paperColor: color,
           paperCost: Math.round((bw * rateBw + color * rateColor) * 100) / 100,

@@ -130,6 +130,19 @@ export function HomePage() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const isBooting = useAuthStore((s) => s.isBooting)
   const checkAuth = useAuthStore((s) => s.checkAuth)
+  // ── Hydration guard ──
+  // The server cannot know whether the browser holds a token in
+  // localStorage, so the first client render (hydration) MUST produce the
+  // exact same markup as the server render — otherwise React 19 throws a
+  // hydration-mismatch error and re-mounts the whole tree (visible flash +
+  // console errors for every logged-in page reload).
+  // Strategy: render a neutral <BootScreen> on BOTH server and first client
+  // render, then switch to the real UI (login / boot loader / app shell)
+  // after mount, when localStorage is safely readable.
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
   const [bootDone, setBootDone] = React.useState(() => {
     // If there's no token in the store at mount time, skip the boot screen
     // entirely — no need to wait for a network call that will just 401.
@@ -261,6 +274,14 @@ export function HomePage() {
     }
   }, [])
 
+  // ── Phase 1: SSR + first client render (hydration) ──
+  // Neutral boot screen — identical markup on server and client, so React
+  // hydration always matches. Never touches localStorage during render.
+  if (!mounted) {
+    return <BootScreen label="กำลังตรวจสอบเซสชัน..." />
+  }
+
+  // ── Phase 2: client-only (post-mount). localStorage is readable now. ──
   // Boot screen — only show if we're actually waiting for a token check
   // (not when there's no token, which means login page should show)
   if (!bootDone) {
@@ -270,14 +291,7 @@ export function HomePage() {
       // No token — go straight to login
       return <ItamLogin />
     }
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-[#f97316]" />
-          <div className="text-sm text-slate-400">กำลังตรวจสอบเซสชัน...</div>
-        </div>
-      </div>
-    )
+    return <BootScreen label="กำลังตรวจสอบเซสชัน..." />
   }
 
   // ── Auto-detect mobile device ──
@@ -402,6 +416,21 @@ export function HomePage() {
   )
 }
 
+// ─── BootScreen ──────────────────────────────────────────────────────
+// Full-screen neutral loader used during SSR/hydration and auth checks.
+// Rendered identically on server and client (no localStorage reads), so it
+// is safe to use as the hydration-phase fallback in HomePage and TokenRouter.
+function BootScreen({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-[#f97316]" />
+        <div className="text-sm text-slate-400">{label}</div>
+      </div>
+    </div>
+  )
+}
+
 // ─── TokenRouter ─────────────────────────────────────────────────────
 // Fetches the token type from /api/auth/verify-token and renders either
 // AuthRegisterPage (for 'invite'/'register' tokens) or AuthResetPage
@@ -443,14 +472,7 @@ function TokenRouter({ token }: { token: string }) {
   }, [token])
 
   if (route === 'loading') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-[#f97316]" />
-          <div className="text-sm text-slate-400">กำลังตรวจสอบลิงก์...</div>
-        </div>
-      </div>
-    )
+    return <BootScreen label="กำลังตรวจสอบลิงก์..." />
   }
 
   if (route === 'register') return <AuthRegisterPage token={token} />

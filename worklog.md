@@ -23169,3 +23169,32 @@ Stage Summary:
 - Chart warning spam eliminated (11 files, new VisibleResponsiveContainer).
 - Commit a2f1cc5 pushed to main. lint 0 errors, tsc clean, e2e verified.
 - Next round candidates: i18n dictionary coverage (large); per-site cost trend line in dashboard (extend KPI with sparkline); audit-log date filter UI test; consider eslint --fix pass for the 114 warnings (mechanical, low risk).
+
+---
+Task ID: QA-ROUND-2026-09-16-D
+Agent: orchestrator (cron webDevReview)
+Task: Scheduled QA round — fixed hydration mismatch + paper-analytics key/blank-code bug + dashboard trend data bug + demo bySite double-count; features: 6-month cost-trend sparkline in cost KPI card; styling: KPI card hover polish
+
+Work Log:
+- Reviewed worklog tail (QA-ROUND-2026-09-16-C was last; commit a2f1cc5 + one automated commit 5120f17). Dev server alive (200). Note: 'undefined-undefined' key warning and seed-material-cost bug from older pending lists were already fixed in rounds A/C.
+- BUG FIX #1 (hydration mismatch, 21 occurrences in dev.log): server rendered <ItamLogin> but a logged-in browser's first render produced the boot loader (bootDone/hasToken read localStorage during render) → React 19 "Hydration failed" + full tree re-mount on EVERY reload for logged-in users. Fix: new `mounted` gate in home-client.tsx — SSR + first client render always emit a neutral <BootScreen> (extracted shared component, also reused by TokenRouter), real UI (login/boot/app) only after mount. Verified: multiple reloads logged-in = 0 hydration errors (was 1 per reload).
+- Investigated "[GlobalError] ReferenceError: Wallet is not defined" (fired intermittently): NOT a source bug — Wallet is imported (line 48); only fires during Turbopack Fast-Refresh rebuild cycles (stale module closure), self-heals via full reload, never fires on clean loads (verified: 5 consecutive reloads + full module walk = 0). Dev-only artifact, documented as known minor.
+- BUG FIX #2 (paper-analytics first-mount "unique key" warning + blank asset codes): captured via console.error hook + Array.prototype.map instrumentation → API overview view returned topDevice rows with field `assetNo` while the frontend reads `d.assetCode` for BOTH the React key and display → key=undefined (warning) AND the asset code column rendered BLANK in "5 เครื่องพิมพ์ใช้กระดาษสูงสุด". ranking/compare3 views already had the assetCode alias; overview (route.ts:149) was missing it. Fixed by adding the alias. Verified: 0 key warnings on fresh mount; codes now display (UDH-CPY-2024-001 Ricoh MP 2014AD …).
+- BUG FIX #3 (dashboard 6-month trend showed WRONG values): the raw-SQL CTE computed latest.pagesBw − previous-reading.pagesBw = the month-over-month CHANGE in usage, not usage itself (pagesBw/pagesColor already store per-reading usage deltas computed at POST time — verified against DB rows for UDH-CPY-2024-001). Chart showed ~300 sheets/month when actual usage is ~4,100-4,650/month; forecast was equally wrong. Replaced the whole window-function CTE with a simple GROUP BY readingMonth, d."site" SUM query (consistent with bySite + paper-analytics semantics). Verified: trend Sept = 4,071 sheets = bySite paperSheets exactly; chart Y-axis now 2k-6k; VLM confirms ~5k stable → 4.5k decline + forecast segment renders.
+- BUG FIX #4 (trend ignored site + demo scope): the old trend SQL had no isDemo/site filter (demo users saw real-data trend shapes). New query applies d."isDemo" + d."site" IN (allowed) via Prisma.sql fragment (trendDeviceFilter). Verified: demo_admin trend (1,308-1,518 sheets/month, HQ+BKK rates) ≠ admin trend (4,071-4,651, UDH/NKP/KKN).
+- BUG FIX #5 (bySite double-count for demo sites): demo SiteAttributes have SiteName == SiteCode ("HQ"/"BKK"), and bySite summed BOTH keys → demo device/paper/cost stats were exactly 2× (HQ ฿2,794+BKK ฿1,019 = ฿3,813.50 vs true ฿1,906.50; device counts 14+2 vs true 7+1). Fixed with deduped siteKeys + sumMap helper. Verified: demo bySite total ฿1,906.50 == trend Sept cost ฿1,906.50; admin numbers unchanged.
+- FEATURE (cost-trend sparkline): dashboard API paperTrend now includes per-month `cost` (each month priced at per-site SiteAttribute rates; fallback 0.5/2.0). Cost KPI card gains a pure-SVG 6-month sparkline (gradient fill, end dot, emerald=falling/rose=rising) + MoM % badge (▲ red = more spend, ▼ green = savings) with tooltip, hidden on <sm. Sparkline last point == card big number (coherent). Verified admin: ฿4,729→฿4,836→฿4,398→฿4,515→฿4,218→฿4,246, badge "▲ 1%"; demo: ฿1,907. VLM: "professional, no visual glitches".
+- STYLING: all 8 KPI-row cards (paper-this-month, cost, sites, realtime + plain variants) now have transition-all hover:-translate-y-0.5 hover:shadow-md lift, matching the existing KpiCard style (consistency pass).
+- Regression: tsc --noEmit clean; bun run lint 0 errors (115 pre-existing warnings); full module walk as demo_admin (อุปกรณ์/มิเตอร์/แจ้งซ่อม/สต๊อก/กระดาษ/แดชบอร์ด) = 0 console errors except the known dev-only next-themes script-tag warning.
+
+Known issues (documented, not fixed):
+- next-themes dev-only "script tag" console warning (upstream, production unaffected) — do NOT replace next-themes.
+- Turbopack Fast-Refresh transient ReferenceErrors (e.g. "Wallet is not defined") when files are edited while a browser is connected — self-heals via full reload, dev-only.
+- i18n dictionary coverage for inline Thai strings — still the large remaining refactor.
+- 115 pre-existing lint warnings (unused vars, set-state-in-effect).
+
+Stage Summary:
+- 5 real bugs fixed: hydration mismatch (every logged-in reload), paper-analytics blank asset codes + key warning, dashboard trend showing MoM-change instead of usage (~14× understated), trend demo/site isolation gap, demo bySite 2× double-count.
+- 1 feature: per-site-rated 6-month cost trend + sparkline + MoM badge in the cost KPI card (API + UI).
+- Styling: consistent hover-lift across all KPI cards.
+- All verified e2e (admin + demo_admin). Ready to commit + push.

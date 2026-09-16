@@ -81,7 +81,7 @@ interface DashboardData {
   byType: Array<{ name: string; value: number }>
   bySite: SiteRow[]
   paperThisMonth: number
-  paperTrend: Array<{ month: string; sheets: number }>
+  paperTrend: Array<{ month: string; sheets: number; cost?: number }>
   meterRequiredCount: number
   recentActivity: Array<{
     id: string; assetCode: string; deviceName: string
@@ -182,6 +182,53 @@ function KpiCard({
 }
 
 const MEDALS = ['🥇', '🥈', '🥉']
+
+// ============== CostSparkline (QA-ROUND-2026-09-16-D) ==============
+// Tiny inline SVG line chart for the paper-cost KPI card — shows the 6-month
+// cost trend at a glance. Pure SVG (no recharts) to keep the card light.
+// Color follows the last segment: falling cost = emerald (savings), rising =
+// rose (more spend). The final point gets a dot + value tooltip.
+function CostSparkline({ points, width = 112, height = 30 }: { points: number[]; width?: number; height?: number }) {
+  if (points.length < 2) return null
+  const max = Math.max(...points)
+  const min = Math.min(...points)
+  const range = max - min || 1
+  const step = width / (points.length - 1)
+  const y = (v: number) => height - 3 - ((v - min) / range) * (height - 6)
+  const path = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${y(p).toFixed(1)}`)
+    .join(' ')
+  const area = `${path} L${width},${height} L0,${height} Z`
+  const last = points[points.length - 1]
+  const prev = points[points.length - 2]
+  const falling = last < prev
+  const stroke = falling ? '#10b981' : '#f43f5e'
+  const gradId = `costSpark${falling ? 'Down' : 'Up'}`
+  const tip = points
+    .map((p, i) => `${i === points.length - 1 ? 'ล่าสุด' : `-${points.length - 1 - i} เดือน`}: ฿${p.toLocaleString('th-TH', { maximumFractionDigits: 0 })}`)
+    .join('  ·  ')
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="overflow-visible"
+      role="img"
+      aria-label={`แนวโน้มต้นทุนกระดาษ 6 เดือน: ${tip}`}
+    >
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity={0.25} />
+          <stop offset="100%" stopColor={stroke} stopOpacity={0.02} />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gradId})`} />
+      <path d={path} fill="none" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={width} cy={y(last)} r={2.8} fill={stroke} />
+      <circle cx={width} cy={y(last)} r={5.5} fill={stroke} opacity={0.25} />
+    </svg>
+  )
+}
 
 function heatColor(intensity: number): string {
   const i = Math.max(0, Math.min(1, intensity))
@@ -1056,6 +1103,16 @@ ${kpiHtml}
     .map((s) => ({ name: s.siteName || s.siteCode, cost: s.paperCost ?? 0 }))
     .sort((a, b) => b.cost - a.cost)
   const paperCostTotal = siteCostRows.reduce((a, r) => a + r.cost, 0)
+  // QA-ROUND-2026-09-16-D: 6-month paper-cost trend (dashboard API now prices
+  // each month at per-site rates). Feeds the sparkline in the cost KPI card.
+  const allCostPoints = (data?.paperTrend ?? []).map((p) => p.cost ?? 0)
+  const costTrendPoints = allCostPoints.some((v) => v > 0) ? allCostPoints : []
+  const costTrendLast = costTrendPoints.length >= 2 ? costTrendPoints[costTrendPoints.length - 1] : null
+  const costTrendPrev = costTrendPoints.length >= 2 ? costTrendPoints[costTrendPoints.length - 2] : null
+  const costMomPct =
+    costTrendLast != null && costTrendPrev != null && costTrendPrev > 0
+      ? Math.round(((costTrendLast - costTrendPrev) / costTrendPrev) * 100)
+      : null
   const warrantyAlerts =
     (warrantyData?.summary.expiring ?? 0) +
     (warrantyData?.summary.expired ?? 0)
@@ -1174,7 +1231,7 @@ ${kpiHtml}
 
       {/* Paper-this-month mini card under the warranty bar */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-3 2xl:grid-cols-4">
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex items-center justify-between p-2.5 sm:p-3">
             <div className="flex items-center gap-2 sm:gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400 sm:h-9 sm:w-9">
@@ -1203,7 +1260,7 @@ ${kpiHtml}
         {/* QA-ROUND-2026-09-16-C: paper COST card — money view of paper usage.
             bySite now carries per-site BW/color + cost (dashboard API), so the
             card shows the total plus a per-site breakdown when space allows. */}
-        <Card className="shadow-sm border-emerald-200/70 dark:border-emerald-900/40 dark:bg-slate-900">
+        <Card className="shadow-sm border-emerald-200/70 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-emerald-900/40 dark:bg-slate-900">
           <CardContent className="p-2.5 sm:p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 sm:gap-2.5">
@@ -1231,6 +1288,28 @@ ${kpiHtml}
                   </div>
                 </div>
               </div>
+              {/* 6-month cost trend sparkline + MoM badge (desktop only —
+                  the card is too narrow on phones). Rising cost = red arrow
+                  (more spend), falling = green (savings). */}
+              {!isLoading && costTrendPoints.length >= 2 && (
+                <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
+                  {costMomPct != null && (
+                    <span
+                      className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
+                        costMomPct > 0
+                          ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                          : costMomPct < 0
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'
+                      }`}
+                      title="การเปลี่ยนแปลงต้นทุนกระดาษเทียบเดือนก่อน"
+                    >
+                      {costMomPct > 0 ? '▲' : costMomPct < 0 ? '▼' : '•'} {Math.abs(costMomPct)}%
+                    </span>
+                  )}
+                  <CostSparkline points={costTrendPoints} />
+                </div>
+              )}
             </div>
             {/* Per-site cost breakdown bars (hidden on very small screens) */}
             {!isLoading && siteCostRows.length > 1 && (
@@ -1260,7 +1339,7 @@ ${kpiHtml}
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex items-center justify-between p-2.5 sm:p-3">
             <div className="flex items-center gap-2 sm:gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400 sm:h-9 sm:w-9">
@@ -1291,7 +1370,7 @@ ${kpiHtml}
             offline, the existing KPIs above still cover the dashboard's core
             counts via polling. */}
         {realtime.isConnected && realtime.kpi && (
-          <Card className="shadow-sm border-emerald-200/70 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <Card className="shadow-sm border-emerald-200/70 bg-emerald-50/40 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-emerald-900/40 dark:bg-emerald-950/20">
             <CardContent className="p-2.5 sm:p-3">
               <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
                 <span className="relative flex h-2 w-2">
@@ -1394,7 +1473,7 @@ ${kpiHtml}
   )
 
   const insightsWidget = (
-    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <CircleAlert className="h-4 w-4 text-[#f97316]" /> {t('dash.widget.insights')}
@@ -1742,7 +1821,7 @@ ${kpiHtml}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut', delay: 0.1 }}
     >
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="text-base">{t('dash.widget.paper_trend_6m')}</CardTitle>
           <p className="text-xs text-slate-500 dark:text-slate-400">{t('dash.widget.paper_trend_desc')}</p>
@@ -1910,7 +1989,7 @@ ${kpiHtml}
   )
 
   const bySiteWidget = (
-    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Building2 className="h-4 w-4 text-[#f97316]" /> {t('dash.widget.by_site')}
@@ -1948,7 +2027,7 @@ ${kpiHtml}
   )
 
   const recentActivityWidget = (
-    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <History className="h-4 w-4 text-[#f97316]" /> {t('dash.widget.recent_activity')}

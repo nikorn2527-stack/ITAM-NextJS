@@ -146,7 +146,9 @@ export async function GET(req: NextRequest) {
       const topDevice = Array.from(byDevice.entries())
         .sort((a, b) => b[1].sheets - a[1].sheets)
         .slice(0, 5)
-        .map(([assetNo, v]) => ({ assetNo, ...v }))
+        // Alias assetCode (front-end reads assetCode for row keys + display —
+        // without it the React key is undefined and the asset code renders blank)
+        .map(([assetNo, v]) => ({ assetNo, ...v, assetCode: assetNo }))
 
       const avgPerMonth = monthly.length > 0 ? Math.round(totalSheets / monthly.length) : 0
 
