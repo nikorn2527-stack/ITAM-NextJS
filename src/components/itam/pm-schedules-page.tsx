@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * PMSchedulesPage — TableWorkpreventive maintenance (Preventive Maintenance)
+ * PMSchedulesPage — ตารางงานบำรุงรักษาเชิงป้องกัน (Preventive Maintenance)
  *
  * Phase 3: List + Create/Edit form
  *
@@ -172,13 +172,13 @@ function todayISO(): string {
 const DEVICE_TYPES = ['PRINTER', 'COPIER', 'MFP', 'SCANNER', 'COMPUTER', 'NETWORK', 'OTHER']
 
 const DEVICE_TYPE_LABELS: Record<string, string> = {
-  PRINTER: 'unitsPrint',
-  COPIER: 'unitscaptureDocument',
-  MFP: 'unitsPrintmultifunction',
-  SCANNER: 'Scan',
-  COMPUTER: 'computer',
-  NETWORK: 'DeviceNetwork',
-  OTHER: 'Other',
+  PRINTER: 'เครื่องพิมพ์',
+  COPIER: 'เครื่องถ่ายเอกสาร',
+  MFP: 'เครื่องพิมพ์มัลติฟังก์ชัน',
+  SCANNER: 'เครื่องสแกน',
+  COMPUTER: 'คอมพิวเตอร์',
+  NETWORK: 'อุปกรณ์เครือข่าย',
+  OTHER: 'อื่น ๆ',
 }
 
 // ── Form state ───────────────────────────────────────────────────────
@@ -424,14 +424,14 @@ export function PMSchedulesPage() {
       })
     },
     onSuccess: (_json, vars) => {
-      toast.success(vars.id ? 'EditTable PM ' : 'CreateTable PM ')
+      toast.success(vars.id ? 'แก้ไขผัง PM เรียบร้อย' : 'สร้างผัง PM เรียบร้อย')
       qc.invalidateQueries({ queryKey: ['pm-schedules'] })
       setFormOpen(false)
       setEditTarget(null)
       setForm(EMPTY_FORM)
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'errorError')
+      toast.error(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
     },
   })
 
@@ -439,11 +439,11 @@ export function PMSchedulesPage() {
     mutationFn: async (id: string) =>
       authFetch(`/api/pm/schedules/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      toast.success('CloseActiveTable PM ')
+      toast.success('ปิดใช้งานผัง PM เรียบร้อย')
       qc.invalidateQueries({ queryKey: ['pm-schedules'] })
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'errorError')
+      toast.error(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
     },
   })
 
@@ -488,7 +488,7 @@ export function PMSchedulesPage() {
 
   function submitForm() {
     if (!form.title.trim()) {
-      toast.error('PleaseSpecifyNameTableWork')
+      toast.error('กรุณาระบุชื่องาน')
       return
     }
     upsertMutation.mutate({ id: editTarget?.id, data: form })
@@ -633,7 +633,7 @@ export function PMSchedulesPage() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow">
                   <CalendarClock className="h-5 w-5" />
                 </div>
-                <span>TableWorkmaintenance</span>
+                <span>งานบำรุงรักษา</span>
                 <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300">
                   PM (Preventive)
                 </Badge>
@@ -659,7 +659,7 @@ export function PMSchedulesPage() {
                 className="h-10 bg-violet-600 hover:bg-violet-700"
               >
                 <Plus className="mr-1 h-3.5 w-3.5" />
-                CreateTable PM
+                สร้างผัง PM
               </Button>
             </div>
           </div>
@@ -683,7 +683,7 @@ export function PMSchedulesPage() {
                   id="pm-search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="NameTable / No.at / Description"
+                  placeholder="ชื่อตาราง / รหัส / คำอธิบาย"
                   className="h-9 pl-8 text-xs"
                 />
               </div>
@@ -695,9 +695,9 @@ export function PMSchedulesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">CloseActive</SelectItem>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="active">ใช้งาน</SelectItem>
+                  <SelectItem value="inactive">ปิดใช้งาน</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -709,7 +709,7 @@ export function PMSchedulesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">AllSite</SelectItem>
+                    <SelectItem value="all">ทุกสาขา</SelectItem>
                     {sites.map((s) => (
                       <SelectItem key={s.id} value={s.code}>
                         {s.name} ({s.code})
@@ -732,11 +732,11 @@ export function PMSchedulesPage() {
         <TabsList className="grid h-auto w-full grid-cols-3 gap-1">
           <TabsTrigger value="schedules" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <CalendarClock className="h-4 w-4" />
-            <span>TableWork</span>
+            <span>ตารางงาน</span>
           </TabsTrigger>
           <TabsTrigger value="calendar" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Calendar className="h-4 w-4" />
-            <span>calendar</span>
+            <span>ปฏิทิน</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <CheckCircle2 className="h-4 w-4" />
@@ -757,14 +757,14 @@ export function PMSchedulesPage() {
         <Card className="min-h-0 flex-1">
           <CardContent className="flex flex-col items-center justify-center gap-2 p-8 text-center">
             <CalendarClock className="h-12 w-12 text-muted-foreground/40" />
-            <div className="text-sm font-medium text-muted-foreground">StillNoneTable PM</div>
+            <div className="text-sm font-medium text-muted-foreground">ยังไม่มีผัง PM</div>
             <p className="max-w-md text-xs text-muted-foreground/70">
-              Clickbutton &quot;CreateTable PM&quot; forAddTablemaintenanceTypeCycleTime
-              e.g. DocleanlinessunitsPrintAllmonths checkPartsAllQuarter
+              คลิกปุ่ม &quot;สร้างผัง PM&quot; เพื่อเพิ่มตารางบำรุงรักษาตามรอบเวลา
+              เช่น ทำความสะอาดหน่วยพิมพ์ทุกเดือน ตรวจเช็คอะไหล่ทุกไตรมาส
             </p>
             <Button size="sm" onClick={openCreate} className="mt-3 bg-violet-600 hover:bg-violet-700">
               <Plus className="mr-1 h-3.5 w-3.5" />
-              CreateTablefirst
+              สร้างตารางแรก
             </Button>
           </CardContent>
         </Card>
@@ -780,11 +780,11 @@ export function PMSchedulesPage() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <TableRow className="text-xs">
-                      <TableHead className="w-[25%]">TableWork</TableHead>
-                      <TableHead>frequency</TableHead>
-                      <TableHead>Goal</TableHead>
-                      <TableHead className="text-right">timesperto</TableHead>
-                      <TableHead className="text-right">timesLatest</TableHead>
+                      <TableHead className="w-[25%]">ตารางงาน</TableHead>
+                      <TableHead>ความถี่</TableHead>
+                      <TableHead>เป้าหมาย</TableHead>
+                      <TableHead className="text-right">ครั้งถัดไป</TableHead>
+                      <TableHead className="text-right">ครั้งล่าสุด</TableHead>
                       <TableHead className="text-right">{t('devices.row.history')}</TableHead>
                       <TableHead className="text-right">{t('settings.col.actions')}</TableHead>
                     </TableRow>
@@ -840,10 +840,10 @@ export function PMSchedulesPage() {
                                   {DEVICE_TYPE_LABELS[s.deviceType] ?? s.deviceType}
                                 </span>
                               ) : (
-                                <span className="text-[11px] text-muted-foreground">AllDevice</span>
+                                <span className="text-[11px] text-muted-foreground">ทุกอุปกรณ์</span>
                               )}
                               {s.site && (
-                                <span className="text-[10px] text-muted-foreground">Site: {s.site}</span>
+                                <span className="text-[10px] text-muted-foreground">สาขา: {s.site}</span>
                               )}
                             </div>
                           </TableCell>
@@ -893,8 +893,8 @@ export function PMSchedulesPage() {
                                   variant="ghost"
                                   onClick={() => setDeleteTarget(s)}
                                   className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                                  aria-label="CloseActive"
-                                  title="CloseActive"
+                                  aria-label="ปิดใช้งาน"
+                                  title="ปิดใช้งาน"
                                 >
                                   <Power className="h-3.5 w-3.5" />
                                 </Button>
@@ -919,11 +919,11 @@ export function PMSchedulesPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={prevMonth} className="h-8 w-8 p-0" aria-label="monthsBeforefront">
+                  <Button size="sm" variant="outline" onClick={prevMonth} className="h-8 w-8 p-0" aria-label="เดือนก่อนหน้า">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <span className="text-sm font-semibold">{formatMonthLabel(calMonth)}</span>
-                  <Button size="sm" variant="outline" onClick={nextMonth} className="h-8 w-8 p-0" aria-label="monthsnextto">
+                  <Button size="sm" variant="outline" onClick={nextMonth} className="h-8 w-8 p-0" aria-label="เดือนถัดไป">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                   <Button
@@ -957,10 +957,10 @@ export function PMSchedulesPage() {
                 <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
                   <Calendar className="h-12 w-12 text-muted-foreground/40" />
                   <div className="text-sm font-medium text-muted-foreground">
-                    None PM inmonths {formatMonthLabel(calMonth)}
+                    ไม่มี PM ในเดือน {formatMonthLabel(calMonth)}
                   </div>
                   <p className="max-w-md text-xs text-muted-foreground/70">
-                    CreateTable PM intab &quot;TableWork&quot; fortoShowincalendar
+                    สร้างผัง PM ในแท็บ &quot;ตารางงาน&quot; เพื่อแสดงในปฏิทิน
                   </p>
                 </div>
               ) : (
@@ -1089,7 +1089,7 @@ export function PMSchedulesPage() {
           <Card className="shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-3">
-                <CardTitle className="text-sm">HistoryDo PM</CardTitle>
+                <CardTitle className="text-sm">ประวัติการทำ PM</CardTitle>
                 <Button
                   size="sm"
                   variant="outline"
@@ -1110,9 +1110,9 @@ export function PMSchedulesPage() {
               ) : !histData?.data || histData.data.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
                   <CheckCircle2 className="h-12 w-12 text-muted-foreground/40" />
-                  <div className="text-sm font-medium text-muted-foreground">StillNoneHistoryDo PM</div>
+                  <div className="text-sm font-medium text-muted-foreground">ยังไม่มีประวัติการทำ PM</div>
                   <p className="text-xs text-muted-foreground/70">
-                    toattab &quot;calendar&quot; click PM inDateMustDo
+                    ไปที่แท็บ &quot;ปฏิทิน&quot; แล้วคลิก PM ในวันที่ต้องดำเนินการ
                   </p>
                 </div>
               ) : (
@@ -1120,11 +1120,11 @@ export function PMSchedulesPage() {
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                       <TableRow className="text-xs">
-                        <TableHead>Table PM</TableHead>
-                        <TableHead>DateSet</TableHead>
-                        <TableHead>DateDoreal</TableHead>
+                        <TableHead>ผัง PM</TableHead>
+                        <TableHead>วันที่ตั้ง</TableHead>
+                        <TableHead>วันที่ทำจริง</TableHead>
                         <TableHead>{t('settings.col.status')}</TableHead>
-                        <TableHead>PersonDo</TableHead>
+                        <TableHead>ผู้ปฏิบัติงาน</TableHead>
                         <TableHead className="text-right">{t('settings.col.actions')}</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1234,13 +1234,13 @@ export function PMSchedulesPage() {
               const j = await res.json().catch(() => ({}))
               throw new Error(j.error ?? 'Failed to complete PM')
             }
-            toast.success('SaveResultDo PM ')
+            toast.success('บันทึกผลการทำ PM เรียบร้อย')
             setExecTarget(null)
             qc.invalidateQueries({ queryKey: ['pm-calendar'] })
             qc.invalidateQueries({ queryKey: ['pm-executions-history'] })
             qc.invalidateQueries({ queryKey: ['pm-schedules'] })
           } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
+            toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
           }
         }}
       />
@@ -1251,20 +1251,20 @@ export function PMSchedulesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarClock className="h-5 w-5 text-violet-600" />
-              {editTarget ? 'EditTable PM' : 'CreateTable PM'}
+              {editTarget ? 'แก้ไขผัง PM' : 'สร้างผัง PM'}
             </DialogTitle>
             <DialogDescription>
-              {editTarget ? `Code: ${editTarget.scheduleNo}` : 'SetTablemaintenancebyCycleTime'}
+              {editTarget ? `รหัส: ${editTarget.scheduleNo}` : 'กำหนดตารางบำรุงรักษาตามรอบเวลา'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             {/* Title */}
             <div className="space-y-1.5">
-              <Label htmlFor="pm-title">NameTableWork <span className="text-rose-500">*</span></Label>
+              <Label htmlFor="pm-title">ชื่องาน <span className="text-rose-500">*</span></Label>
               <Input
                 id="pm-title"
-                placeholder="e.g. maintenanceunitsPrintitemmonths"
+                placeholder="เช่น บำรุงรักษาหน่วยพิมพ์รายเดือน"
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               />
@@ -1272,11 +1272,11 @@ export function PMSchedulesPage() {
 
             {/* Description */}
             <div className="space-y-1.5">
-              <Label htmlFor="pm-desc">Details</Label>
+              <Label htmlFor="pm-desc">รายละเอียด</Label>
               <Textarea
                 id="pm-desc"
                 rows={2}
-                placeholder="((optional)) explain boundaryDistrictWork"
+                placeholder="(ไม่บังคับ) อธิบายขอบเขตงาน"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               />
@@ -1390,26 +1390,26 @@ export function PMSchedulesPage() {
             {/* Target */}
             <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
               <Label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                GroupGoal — SelectmanyType
+                กลุ่มเป้าหมาย — เลือกได้หลายประเภท
               </Label>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="pm-dtype" className="text-xs">TypeDevice</Label>
+                  <Label htmlFor="pm-dtype" className="text-xs">ประเภทอุปกรณ์</Label>
                   <Select
                     value={form.deviceType || '__none__'}
                     onValueChange={(v) => setForm((f) => ({ ...f, deviceType: v === '__none__' ? '' : v }))}
                   >
                     <SelectTrigger id="pm-dtype" className="h-9 text-xs">
-                      <SelectValue placeholder="AllType" />
+                      <SelectValue placeholder="ทุกประเภท" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">AllType</SelectItem>
+                      <SelectItem value="__none__">ทุกประเภท</SelectItem>
                       {DEVICE_TYPES.map((t) => {
                         const cnt = deviceTypeCounts.get(t) ?? 0
                         return (
                           <SelectItem key={t} value={t}>
                             {DEVICE_TYPE_LABELS[t] ?? t}{' '}
-                            <span className="ml-1 text-[10px] text-slate-400">({cnt} units)</span>
+                            <span className="ml-1 text-[10px] text-slate-400">({cnt} เครื่อง)</span>
                           </SelectItem>
                         )
                       })}
@@ -1417,7 +1417,7 @@ export function PMSchedulesPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="pm-sitesel" className="text-xs">Site</Label>
+                  <Label htmlFor="pm-sitesel" className="text-xs">สาขา</Label>
                   <Select
                     value={form.site || '__none__'}
                     onValueChange={(v) => setForm((f) => ({
@@ -1443,7 +1443,7 @@ export function PMSchedulesPage() {
 
               {/* ── SelectTypeGroupAddFill ── */}
               <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-                <Label className="text-xs text-slate-500">SelectTypeGroupAddFill ((optional))</Label>
+                <Label className="text-xs text-slate-500">เลือกกลุ่มเป้าหมายเพื่อเติมอัตโนมัติ (ไม่บังคับ)</Label>
                 <div className="flex flex-wrap gap-2">
                   {/* All devices */}
                   <button
@@ -1455,7 +1455,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    📋 AllDevice
+                    📋 ทุกอุปกรณ์
                   </button>
                   {/* By type — PRINTER */}
                   <button
@@ -1467,7 +1467,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    🖨️ unitsPrint
+                    🖨️ เครื่องพิมพ์
                   </button>
                   {/* By type — COPIER */}
                   <button
@@ -1479,7 +1479,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    📄 unitscaptureDocument
+                    📄 เครื่องถ่ายเอกสาร
                   </button>
                   {/* By type — MFP */}
                   <button
@@ -1491,7 +1491,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    🖨️📋 multifunction
+                    🖨️📋 มัลติฟังก์ชัน
                   </button>
                   {/* By type — COMPUTER */}
                   <button
@@ -1503,7 +1503,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    💻 computer
+                    💻 คอมพิวเตอร์
                   </button>
                   {/* By type — NETWORK */}
                   <button
@@ -1515,14 +1515,14 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-cyan-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    🌐 DeviceNetwork
+                    🌐 อุปกรณ์เครือข่าย
                   </button>
                 </div>
 
                 {/* Quick site selection */}
                 {sites.length > 0 && (
                   <div className="mt-2">
-                    <Label className="text-xs text-slate-500">SelectSiteUrgent:</Label>
+                    <Label className="text-xs text-slate-500">เลือกสาขาเร่งด่วน:</Label>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       <button
                         type="button"
@@ -1555,11 +1555,11 @@ export function PMSchedulesPage() {
 
                 {/* ── building / Floor / Dept (Chip Selector) ── */}
                 <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-                  <Label className="text-xs text-slate-500">FilterbyLocation ((optional))</Label>
+                  <Label className="text-xs text-slate-500">กรองตามตำแหน่ง (ไม่บังคับ)</Label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {/* Building */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-slate-400">building/Building</Label>
+                      <Label className="text-[10px] text-slate-400">อาคาร</Label>
                       <Select
                         value={form.building || '__none__'}
                         onValueChange={(v) => setForm((f) => ({
@@ -1569,14 +1569,14 @@ export function PMSchedulesPage() {
                         }))}
                       >
                         <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Allbuilding" />
+                          <SelectValue placeholder="ทุกอาคาร" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">Allbuilding</SelectItem>
+                          <SelectItem value="__none__">ทุกอาคาร</SelectItem>
                           {masterBuilding.map((b) => (
                             <SelectItem key={b.code} value={b.label}>
                               {b.label}{' '}
-                              <span className="ml-1 text-[10px] text-slate-400">({b.count} units)</span>
+                              <span className="ml-1 text-[10px] text-slate-400">({b.count} เครื่อง)</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1584,7 +1584,7 @@ export function PMSchedulesPage() {
                     </div>
                     {/* Floor */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-slate-400">Floor</Label>
+                      <Label className="text-[10px] text-slate-400">ชั้น</Label>
                       <Select
                         value={form.floor || '__none__'}
                         onValueChange={(v) => setForm((f) => ({
@@ -1594,14 +1594,14 @@ export function PMSchedulesPage() {
                         }))}
                       >
                         <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="AllFloor" />
+                          <SelectValue placeholder="ทุกชั้น" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">AllFloor</SelectItem>
+                          <SelectItem value="__none__">ทุกชั้น</SelectItem>
                           {masterFloor.map((fl) => (
                             <SelectItem key={fl.code} value={fl.label}>
                               {fl.label}{' '}
-                              <span className="ml-1 text-[10px] text-slate-400">({fl.count} units)</span>
+                              <span className="ml-1 text-[10px] text-slate-400">({fl.count} เครื่อง)</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1609,20 +1609,20 @@ export function PMSchedulesPage() {
                     </div>
                     {/* Department */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-slate-400">Dept</Label>
+                      <Label className="text-[10px] text-slate-400">แผนก</Label>
                       <Select
                         value={form.department || '__none__'}
                         onValueChange={(v) => setForm((f) => ({ ...f, department: v === '__none__' ? '' : v }))}
                       >
                         <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="AllDept" />
+                          <SelectValue placeholder="ทุกแผนก" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60">
-                          <SelectItem value="__none__">AllDept</SelectItem>
+                          <SelectItem value="__none__">ทุกแผนก</SelectItem>
                           {masterDepartment.map((d) => (
                             <SelectItem key={d.code} value={d.label}>
                               {d.label}{' '}
-                              <span className="ml-1 text-[10px] text-slate-400">({d.count} units)</span>
+                              <span className="ml-1 text-[10px] text-slate-400">({d.count} เครื่อง)</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1691,7 +1691,7 @@ export function PMSchedulesPage() {
               </div>
               {form.checklist.length === 0 ? (
                 <p className="rounded-md border border-dashed p-2 text-center text-[11px] text-muted-foreground">
-                  StillNoneitemCheck — AddforSetstepAtDo PM
+                  ยังไม่มีรายการตรวจสอบ — เพิ่มเพื่อกำหนดขั้นตอนในการทำ PM
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -1753,14 +1753,14 @@ export function PMSchedulesPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>CloseActiveTable PM</AlertDialogTitle>
+            <AlertDialogTitle>ปิดใช้งานผัง PM</AlertDialogTitle>
             <AlertDialogDescription>
-              ConfirmCloseActive &quot;{deleteTarget?.title}&quot; ({deleteTarget?.scheduleNo})?
-              TablewillNoCreate PM Newmore แ่HistoryDo PM StillremainAt
+              ยืนยันปิดใช้งาน &quot;{deleteTarget?.title}&quot; ({deleteTarget?.scheduleNo})?
+              ระบบจะไม่สร้าง PM รอบใหม่อีก แต่ประวัติการทำ PM ยังคงอยู่
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault() // prevent Radix auto-close before async completes
@@ -1772,7 +1772,7 @@ export function PMSchedulesPage() {
               }}
               className="bg-rose-600 hover:bg-rose-700"
             >
-              CloseActive
+              ปิดใช้งาน
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2032,19 +2032,19 @@ function PMExecutionDialog({
 
           {/* Performed by */}
           <div className="space-y-1.5">
-            <Label htmlFor="pm-perf" className="text-xs">PersonDo (downName)</Label>
+            <Label htmlFor="pm-perf" className="text-xs">ผู้ปฏิบัติงาน (ชื่อ-นามสกุล)</Label>
             <Input
               id="pm-perf"
               value={performedBy}
               onChange={(e) => setPerformedBy(e.target.value)}
-              placeholder="NamePersonDo PM"
+              placeholder="ชื่อผู้ปฏิบัติงาน PM"
               className="h-9 text-xs"
             />
           </div>
 
           {/* Images */}
           <div className="space-y-1.5">
-            <Label className="text-xs">imageMainbase ((optional))</Label>
+            <Label className="text-xs">รูปภาพประกอบ (ไม่บังคับ)</Label>
             <input
               ref={fileInputRef}
               type="file"

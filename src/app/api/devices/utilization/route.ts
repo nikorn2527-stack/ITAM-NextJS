@@ -146,29 +146,30 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Pull all readings that fall within the start of the first month shown
-    // (use the month list to bound the query) through today.
+    // Pull all readings for the displayed months.
+    // QA-ROUND-2026-09-16-F: filter by `readingMonth IN (months)` (the same
+    // semantics as the dashboard trend + paper-analytics grouping) instead of
+    // a readingDate window — month-end-dated readings for the CURRENT month
+    // (e.g. 2026-09-30 while today is 2026-09-16) were wrongly excluded by
+    // the old `readingDate <= todayISO` bound, dropping all of September.
     // QA-ROUND-2026-09-16-E: the real schema fields are readingDate (ISO
-    // string) and pagesBw/pagesColor (per-reading usage deltas) — the old
-    // query used phantom `date`/`delta` fields and 500'd on every call.
+    // string) and pagesBw/pagesColor (per-reading usage deltas).
     const months = monthColumns(range)
-    const firstMonthStart = `${months[0]}-01`
-    const todayISO = new Date().toISOString().slice(0, 10)
 
     const readings = await db.meterReading.findMany({
       where: {
-        readingDate: { gte: firstMonthStart, lte: todayISO },
+        readingMonth: { in: months },
         deviceId: { in: devices.map((d) => d.id) },
         // Only usage readings — mirrors the dashboard trend filter.
         readingType: { in: ['MONTHLY', 'CHECKOUT', 'RETURN'] },
       },
-      select: { deviceId: true, pagesBw: true, pagesColor: true, readingDate: true },
+      select: { deviceId: true, pagesBw: true, pagesColor: true, readingMonth: true },
     })
 
     // Aggregate per device per month (pagesBw+pagesColor = sheets printed)
     const perDeviceMonth = new Map<string, Map<string, number>>()
     for (const r of readings) {
-      const m = (r.readingDate || '').slice(0, 7) // YYYY-MM
+      const m = (r.readingMonth || '').slice(0, 7) // YYYY-MM
       if (!m) continue
       let inner = perDeviceMonth.get(r.deviceId)
       if (!inner) {

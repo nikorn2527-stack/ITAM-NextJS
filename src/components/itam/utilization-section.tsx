@@ -2,10 +2,11 @@
 
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useTheme } from 'next-themes'
 import { motion } from 'framer-motion'
-import { ArrowUp, ArrowDown, Minus, TrendingUp, Activity, Inbox } from 'lucide-react'
+import { toast } from 'sonner'
+import { ArrowUp, ArrowDown, Minus, TrendingUp, Activity, Inbox, Download } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
@@ -18,6 +19,7 @@ import type { DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { useAuthStore } from '@/store/auth-store'
 import { useLang } from '@/store/i18n-store'
+import { downloadCsv, dateStamp } from '@/lib/csv'
 
 interface MonthlyReading {
   month: string // YYYY-MM
@@ -121,11 +123,6 @@ export function UtilizationSection({
   range,
   onRangeChange,
 }: UtilizationSectionProps) {
-  const { theme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
-  const isDark = mounted && theme === 'dark'
-
   const { data, isLoading } = useQuery<UtilizationData>({
     queryKey: ['devices-utilization', range],
     queryFn: async () => {
@@ -165,6 +162,38 @@ export function UtilizationSection({
       .slice(0, 5)
   }, [devices])
 
+  /** Export the current heatmap matrix (device × months + totals) as CSV.
+   * Mirrors the export pattern used by the ranking/compare3 tabs. */
+  function exportCsv() {
+    if (devices.length === 0) {
+      toast.info('ยังไม่มีข้อมูลให้ส่งออก')
+      return
+    }
+    const trendLabel: Record<UtilizationDevice['trend'], string> = {
+      up: 'ขึ้น', down: 'ลง', stable: 'คงที่',
+    }
+    const rows = devices.map((d) => {
+      const row: Record<string, unknown> = {
+        assetCode: d.assetCode,
+        device: d.name,
+        brand: d.brand,
+        model: d.model,
+        site: d.site,
+      }
+      for (const m of d.monthlyReadings) {
+        row[formatMonthLabel(m.month)] = m.sheets
+      }
+      row['รวม (แผ่น)'] = d.totalSheets
+      row['เฉลี่ย/เดือน'] = d.avgPerMonth
+      row['คะแนน'] = d.utilizationScore
+      row['แนวโน้ม'] = trendLabel[d.trend]
+      return row
+    })
+    const rangeLabel = DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? range
+    downloadCsv(`utilization-${rangeLabel}-${dateStamp()}.csv`, rows)
+    toast.success(`ส่งออก ${rows.length} อุปกรณ์เรียบร้อย`)
+  }
+
   return (
     <Card className="border-teal-200/60 dark:border-teal-800/40 dark:bg-slate-900">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -175,18 +204,31 @@ export function UtilizationSection({
             Heatmap รายเดือน · Trend · Top/Low
           </span>
         </CardTitle>
-        <Select value={range} onValueChange={(v) => onRangeChange(v as DashboardRangeKey)}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="ช่วงเวลา" />
-          </SelectTrigger>
-          <SelectContent>
-            {DASHBOARD_RANGE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select value={range} onValueChange={(v) => onRangeChange(v as DashboardRangeKey)}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="ช่วงเวลา" />
+            </SelectTrigger>
+            <SelectContent>
+              {DASHBOARD_RANGE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={exportCsv}
+            disabled={isLoading || devices.length === 0}
+            title="ส่งออกข้อมูลการใช้งานเป็น CSV (device × month matrix)"
+            className="gap-1 whitespace-nowrap dark:bg-slate-800 dark:border-slate-700"
+          >
+            <Download className="h-3.5 w-3.5" /> CSV
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Summary KPIs */}
@@ -452,7 +494,6 @@ export function UtilizationSection({
         <div className="text-xs text-slate-400 dark:text-slate-500">
           คะแนนคำนวณจาก <span className="font-medium">{`totalSheets / maxTotalSheets × 100`}</span>{' '}
           ในช่วงที่เลือก · เซลล์เข้ม = ใช้งานสูง · Trend เปรียบเทียบ 2 เดือนสุดท้าย
-          {isDark ? ' · โหมดมืด' : ''}
         </div>
       </CardContent>
     </Card>

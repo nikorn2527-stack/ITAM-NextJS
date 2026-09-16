@@ -268,10 +268,10 @@ export function ItamSettings() {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error || 'status.failed')
       }
-      toast.success('SaveSettingsNotify')
+      toast.success('บันทึกการตั้งค่าการแจ้งเตือนเรียบร้อย')
       await qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     }
   }
 
@@ -342,7 +342,7 @@ export function ItamSettings() {
       }
       setDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
-    } catch (e) { toast.error('SaveNoSuccess') }
+    } catch (e) { toast.error('บันทึกไม่สำเร็จ') }
   }
 
   async function deleteItem(item: MasterItem) {
@@ -614,11 +614,11 @@ export function ItamSettings() {
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
               <div>
                 <div className="font-medium text-amber-800 dark:text-amber-200">
-                  NoCanLoadSettingsNotifyfrom server 
+                  ไม่สามารถโหลดการตั้งค่าการแจ้งเตือนจากเซิร์ฟเวอร์ได้
                 </div>
                 <div className="mt-0.5 text-xs text-amber-700/80 dark:text-amber-300/80">
-                  {notifyError instanceof Error ? notifyError.message : 'Unknown error'} —
-                  ShowFeeDefaultfortoPendingImmediate Clickbutton &quot;Save&quot; forSaveFeeNew
+                  {notifyError instanceof Error ? notifyError.message : 'เกิดข้อผิดพลาด'} —
+                  แสดงค่าเริ่มต้นเพื่อใช้งานชั่วคราว คลิกปุ่ม &quot;บันทึก&quot; เพื่อบันทึกค่าใหม่
                 </div>
               </div>
             </div>
@@ -674,15 +674,15 @@ export function ItamSettings() {
 
               <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
-                  <CardTitle className="text-base">causeatNotify (Events)</CardTitle>
+                  <CardTitle className="text-base">เหตุการณ์ที่แจ้งเตือน (Events)</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {[
-                    { key: 'deviceAdded' as const, label: '➕ AddDeviceNew' },
-                    { key: 'deviceUpdated' as const, label: '✏️ EditDevice' },
-                    { key: 'transfer' as const, label: '🔄 moveLocationDevice' },
-                    { key: 'lifecycle' as const, label: '🔁 ChangeStatus' },
-                    { key: 'meter' as const, label: '📈 ReadMeter' },
+                    { key: 'deviceAdded' as const, label: '➕ เพิ่มอุปกรณ์ใหม่' },
+                    { key: 'deviceUpdated' as const, label: '✏️ แก้ไขอุปกรณ์' },
+                    { key: 'transfer' as const, label: '🔄 ย้ายตำแหน่งอุปกรณ์' },
+                    { key: 'lifecycle' as const, label: '🔁 เปลี่ยนสถานะ' },
+                    { key: 'meter' as const, label: '📈 จดมิเตอร์' },
                   ].map((ev) => (
                     <div key={ev.key} className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{ev.label}</div>
@@ -694,14 +694,14 @@ export function ItamSettings() {
 
               <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
-                  <CardTitle className="text-base">DataID (Credentials)</CardTitle>
+                  <CardTitle className="text-base">ข้อมูลรับรองความถูกต้อง (Credentials)</CardTitle>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Token willcorrect mask AfterSave — PrintFeeNewforoverwrite
+                    โทเคนจะถูกซ่อนหลังบันทึก — แสดงค่าใหม่เพื่อเขียนทับ
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">EmailPersonReceive (คั่withmicroPart)</Label>
+                    <Label className="text-xs">อีเมลผู้รับ (คั่นด้วยเครื่องหมายจุลภาค)</Label>
                     <Input
                       value={notifyDraft.credentials.notifyEmails || ''}
                       onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, notifyEmails: e.target.value } })}
@@ -981,7 +981,7 @@ function AppCustomizeTab() {
       await qc.invalidateQueries({ queryKey: ['org-profile'] })
       await qc.invalidateQueries({ queryKey: ['app-customization'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -1331,12 +1331,12 @@ function MobileNavConfigSection() {
           mobileNavConfig: JSON.stringify(config),
         }),
       })
-      if (!res.ok) throw new Error('SaveNoSuccess')
-      toast.success('SaveSettingsMobile Menu')
+      if (!res.ok) throw new Error('บันทึกไม่สำเร็จ')
+      toast.success('บันทึกการตั้งค่าเมนูมือถือเรียบร้อย')
       qc.invalidateQueries({ queryKey: ['mobile-nav-config'] })
       qc.invalidateQueries({ queryKey: ['mobile-nav-config-settings'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -1527,13 +1527,13 @@ function MyProfileSection() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'SaveNoSuccess')
+        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
       }
-      toast.success('SaveProfile')
+      toast.success('บันทึกโปรไฟล์เรียบร้อย')
       await fetchMe()
       await loadProfile()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -1730,7 +1730,7 @@ function MyBiometricsSection() {
                 </Button>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                AfterClickbutton browserwillaskConfirmidentity (fingerprint/ticketfront/security key). DobystepAtonfrontscreen.
+                หลังคลิกปุ่ม เบราว์เซอร์จะขอยืนยันตัวตน (ลายนิ้วมือ/ใบหน้า/คีย์ความปลอดภัย) โปรดทำตามขั้นตอนบนหน้าจอ
               </p>
             </div>
 
@@ -1785,11 +1785,11 @@ function MyBiometricsSection() {
 
             {/* Help section */}
             <div className="rounded-lg bg-slate-50 p-3 text-[11px] text-muted-foreground dark:bg-slate-800/30">
-              <p className="font-medium">💡 HowActive:</p>
+              <p className="font-medium">💡 วิธีใช้งาน:</p>
               <ol className="mt-1 ml-4 list-decimal space-y-0.5">
-                <li>Register Passkey ofDevice (sideon)</li>
-                <li>timespertoat login — Pending email Clickbutton &quot;intoSystemwith Passkey&quot;</li>
-                <li>browserwillaskConfirmidentity NoMustPending password</li>
+                <li>ลงทะเบียน Passkey บนอุปกรณ์ (ด้านบน)</li>
+                <li>ครั้งแรกที่เข้าสู่ระบบ — ระบบจะส่งอีเมล คลิกปุ่ม &quot;เข้าสู่ระบบด้วย Passkey&quot;</li>
+                <li>เบราว์เซอร์จะขอยืนยันตัวตน ไม่ต้องกรอกรหัสผ่าน</li>
               </ol>
             </div>
           </>

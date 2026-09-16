@@ -106,9 +106,10 @@ const DevicesPage = dynamic(() =>
 const MeterPage = dynamic(() =>
   import('@/components/itam/meter-page').then((m) => m.MeterPage),
 )
-const PaperAnalyticsPage = dynamic(() =>
-  import('@/components/itam/paper-analytics-page').then((m) => m.PaperAnalyticsPage),
-)
+// NOTE: PaperAnalyticsPage (paper-analytics-page.tsx) is dead code — imported
+// but never rendered anywhere. The live paper analytics UI is ItamPaperAnalytics
+// (which now includes the Utilization tab that used to live only in the dead
+// page). The file is kept for reference; the unused dynamic import is removed.
 // ── Auth pages (from email links: ?token={token}) ──
 const AuthRegisterPage = dynamic(() =>
   import('@/components/itam/auth-register-page').then((m) => m.AuthRegisterPage),

@@ -21,12 +21,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   RefreshCw, FileSpreadsheet, FileText, ChevronLeft, ChevronRight,
   TrendingUp, Trophy, FileBarChart, Table as TableIcon, LayoutGrid,
-  Download,
+  Download, Activity,
 } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
 import { runCustomExport } from '@/lib/custom-export'
-import { canSelectSite } from './types'
+import { canSelectSite, type DashboardRangeKey } from './types'
+import { UtilizationSection } from './utilization-section'
 import { useLang } from '@/store/i18n-store'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -127,7 +128,10 @@ export function ItamPaperAnalytics() {
   const { lang } = useLang()
   const isDark = theme === 'dark'
 
-  const [tab, setTab] = React.useState<'overview' | 'ranking' | 'compare3' | 'detail'>('overview')
+  const [tab, setTab] = React.useState<'overview' | 'ranking' | 'compare3' | 'detail' | 'utilization'>('overview')
+  // Utilization tab has its own range selector (month/30d/quarter/all) —
+  // separate from the monthStart/monthEnd window used by the other tabs.
+  const [utilRange, setUtilRange] = React.useState<DashboardRangeKey>('quarter')
   const [monthStart, setMonthStart] = React.useState(monthsAgoStr(5))
   const [monthEnd, setMonthEnd] = React.useState(currentMonthStr())
   const [site, setSite] = React.useState('')
@@ -468,11 +472,12 @@ ${kpiHtml}
       )}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="flex min-h-0 flex-1 flex-col gap-4">
-        <TabsList className="grid w-full flex-shrink-0 grid-cols-2 sm:grid-cols-4">
+        <TabsList className="grid w-full flex-shrink-0 grid-cols-2 sm:grid-cols-5">
           <TabsTrigger value="overview" className="gap-1" onClick={() => setTab("overview")}><LayoutGrid className="h-3.5 w-3.5" /> ภาพรวม</TabsTrigger>
           <TabsTrigger value="ranking" className="gap-1" onClick={() => setTab("ranking")}><Trophy className="h-3.5 w-3.5" /> จัดอันดับ</TabsTrigger>
           <TabsTrigger value="compare3" className="gap-1" onClick={() => setTab("compare3")}><TrendingUp className="h-3.5 w-3.5" /> 3 เดือน</TabsTrigger>
           <TabsTrigger value="detail" className="gap-1" onClick={() => setTab("detail")}><TableIcon className="h-3.5 w-3.5" /> รายละเอียด</TabsTrigger>
+          <TabsTrigger value="utilization" className="gap-1" onClick={() => setTab("utilization")}><Activity className="h-3.5 w-3.5" /> การใช้งาน</TabsTrigger>
         </TabsList>
 
         {/* ───────────────────────────────────────────────────────────────── */}
@@ -861,6 +866,14 @@ ${kpiHtml}
               </div>
             </div>
           )}
+        </TabsContent>
+
+        {/* ───────────────────────────────────────────────────────────────── */}
+        {/* UTILIZATION — device usage heatmap (was orphaned in the dead
+            paper-analytics-page; now wired into the live tabbed module) */}
+        {/* ───────────────────────────────────────────────────────────────── */}
+        <TabsContent value="utilization" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto">
+          <UtilizationSection range={utilRange} onRangeChange={setUtilRange} />
         </TabsContent>
       </Tabs>
 

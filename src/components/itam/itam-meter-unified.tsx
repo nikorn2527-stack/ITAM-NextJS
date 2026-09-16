@@ -42,15 +42,15 @@ import { useT, useLang } from '@/store/i18n-store'
 // Custom Export — Meter page (Task ID: FIX-1-2-EXPORT-PRINT)
 // ============================================================
 const METER_EXPORT_COLUMNS: ExportColumn[] = [
-  { key: 'assetCode', label: 'CodeDevice', group: 'Device' },
-  { key: 'deviceName', label: 'NameDevice', group: 'Device' },
-  { key: 'site', label: 'Site', group: 'Device' },
-  { key: 'prevMeter', label: 'MeterBeforefront', group: 'Meter' },
-  { key: 'lastMeter', label: 'MeterLatest', group: 'Meter' },
-  { key: 'pagesBw', label: 'sheets BW', group: 'Meter' },
-  { key: 'pagesColor', label: 'sheetsColor', group: 'Meter' },
-  { key: 'readingDate', label: 'DateRead', group: 'Meter' },
-  { key: 'remark', label: 'Remark', group: 'Meter' },
+  { key: 'assetCode', label: 'รหัสอุปกรณ์', group: 'อุปกรณ์' },
+  { key: 'deviceName', label: 'ชื่ออุปกรณ์', group: 'อุปกรณ์' },
+  { key: 'site', label: 'สาขา', group: 'อุปกรณ์' },
+  { key: 'prevMeter', label: 'มิเตอร์ก่อนหน้า', group: 'มิเตอร์' },
+  { key: 'lastMeter', label: 'มิเตอร์ล่าสุด', group: 'มิเตอร์' },
+  { key: 'pagesBw', label: 'แผ่นขาวดำ', group: 'มิเตอร์' },
+  { key: 'pagesColor', label: 'แผ่นสี', group: 'มิเตอร์' },
+  { key: 'readingDate', label: 'วันที่จด', group: 'มิเตอร์' },
+  { key: 'remark', label: 'หมายเหตุ', group: 'มิเตอร์' },
 ]
 
 // ============================================================
@@ -81,7 +81,7 @@ function addDaysISO(iso: string, days: number): string {
 
 function defaultCycleName(date = new Date()): string {
   const monthLabel = formatMonthThai(date.toISOString().slice(0, 7))
-  return `CycleReadMeter ${monthLabel}`
+  return `รอบจดมิเตอร์ ${monthLabel}`
 }
 
 function useNowTick(intervalMs = 60_000): number {
@@ -120,21 +120,21 @@ function CycleCountdownBar({
           </div>
           <div>
             <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-              StillNoneCycleReadMeteratblackhill
+              ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
             </div>
             <div className="text-xs text-amber-700/80 dark:text-amber-300/80">
-              Click &quot;CreateCycleNew&quot; forSetdaysStartanddaysSetReadMeter
+              คลิก &quot;สร้างรอบใหม่&quot; เพื่อกำหนดวันเริ่มต้นและวันจดมิเตอร์
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={onManage} className="dark:bg-slate-800 dark:border-slate-700">
             <CalendarClock className="h-3.5 w-3.5" />
-            ManageCycle
+            จัดการรอบ
           </Button>
           <Button size="sm" onClick={onCreate} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
             <Plus className="h-3.5 w-3.5" />
-            CreateCycleNew
+            สร้างรอบใหม่
           </Button>
         </div>
       </div>
@@ -204,14 +204,14 @@ function CycleCountdownBar({
     colorClass = 'border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/40'
     textClass = 'text-sky-700 dark:text-sky-300'
     barClass = 'bg-sky-500'
-    countdownText = `more ${daysUntilStart} days todaysStartReadMeter`
+    countdownText = `อีก ${daysUntilStart} วันจะเริ่มจดมิเตอร์`
   } else if (phase === 'overdue') {
     // Past deadline
     colorClass = 'border-rose-400 bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40'
     textClass = 'text-rose-800 dark:text-rose-300'
     barClass = 'bg-rose-600'
     pulsing = true
-    countdownText = `justSet ${overdueDays} days`
+    countdownText = `เกินกำหนด ${overdueDays} วัน`
   } else if (phase === 'deadline') {
     // Phase 2 — deadline day (countdown hours)
     colorClass = 'border-rose-400 bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40'
@@ -220,26 +220,26 @@ function CycleCountdownBar({
     pulsing = true
     countdownText =
       diffMs > 0
-        ? `⚠️ toSetReadMeter! Remaining ${diffHours} hr. ${diffMinutes} min`
-        : `⚠️ toSetReadMeter! CloseCyclejust`
+        ? `⚠️ ถึงเวลาจดมิเตอร์! เหลือ ${diffHours} ชม. ${diffMinutes} นาที`
+        : `⚠️ ถึงเวลาจดมิเตอร์! ปิดรอบแล้ว`
   } else if (daysUntilEnd < 3) {
     // Phase 1 — red zone (< 3 days)
     colorClass = 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40'
     textClass = 'text-rose-700 dark:text-rose-300'
     barClass = 'bg-rose-500'
-    countdownText = `more ${daysUntilEnd} days ${diffHours} hr. toSetReadMeter`
+    countdownText = `อีก ${daysUntilEnd} วัน ${diffHours} ชม. ถึงกำหนดจดมิเตอร์`
   } else if (daysUntilEnd < 7) {
     // Phase 1 — orange zone (3-7 days)
     colorClass = 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40'
     textClass = 'text-amber-700 dark:text-amber-300'
     barClass = 'bg-amber-500'
-    countdownText = `more ${daysUntilEnd} days ${diffHours} hr. toSetReadMeter`
+    countdownText = `อีก ${daysUntilEnd} วัน ${diffHours} ชม. ถึงกำหนดจดมิเตอร์`
   } else {
     // Phase 1 — green zone (> 7 days)
     colorClass = 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40'
     textClass = 'text-emerald-700 dark:text-emerald-300'
     barClass = 'bg-emerald-500'
-    countdownText = `more ${daysUntilEnd} days toSetReadMeter`
+    countdownText = `อีก ${daysUntilEnd} วันถึงกำหนดจดมิเตอร์`
   }
 
   return (
@@ -341,16 +341,16 @@ function QuickCreateCycleDialog({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'CreateCycleNoSuccess')
+        throw new Error(j.error ?? 'สร้างรอบไม่สำเร็จ')
       }
-      toast.success('CreateCycleReadMeterNew')
+      toast.success('สร้างรอบจดมิเตอร์ใหม่เรียบร้อย')
       onOpenChange(false)
       await qc.invalidateQueries({ queryKey: ['active-cycle'] })
       await qc.invalidateQueries({ queryKey: ['meter-reminders'] })
       await qc.invalidateQueries({ queryKey: ['itam-meter-keyboard'] })
       onCreated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'CreateCycleNoSuccess')
+      toast.error(e instanceof Error ? e.message : 'สร้างรอบไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -360,24 +360,24 @@ function QuickCreateCycleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <DialogHeader>
-          <DialogTitle>CreateCycleReadMeterNew</DialogTitle>
+          <DialogTitle>สร้างรอบจดมิเตอร์ใหม่</DialogTitle>
           <DialogDescription>
-            SetNameCycle + daysDefault + daysSetReadMeter (deadline)
+            กำหนดชื่อรอบ + วันเริ่มต้น + วันกำหนดจดมิเตอร์ (deadline)
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
-            <Label className="text-xs">NameCycle *</Label>
+            <Label className="text-xs">ชื่อรอบ *</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. CycleReadMeter August 2568"
+              placeholder="เช่น รอบจดมิเตอร์ สิงหาคม 2568"
               className="dark:bg-slate-800 dark:border-slate-700"
             />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">daysDefault *</Label>
+              <Label className="text-xs">วันเริ่มต้น *</Label>
               <Input
                 type="date"
                 value={startDate}
@@ -386,7 +386,7 @@ function QuickCreateCycleDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">daysSetRead (Deadline) *</Label>
+              <Label className="text-xs">วันกำหนดจด (Deadline) *</Label>
               <Input
                 type="date"
                 value={endDate}
@@ -517,8 +517,8 @@ export function ItamMeterUnified() {
         readingDate: r.readingDate ?? '',
         remark: r.remark ?? '',
       }))
-      runCustomExport(columns, format, rows, 'meter-readings', 'ReportReadMeter')
-      toast.success(`Export ${rows.length} item`)
+      runCustomExport(columns, format, rows, 'meter-readings', 'รายงานจดมิเตอร์')
+      toast.success(`ส่งออก ${rows.length} รายการ`)
     },
     [],
   )
@@ -552,11 +552,11 @@ export function ItamMeterUnified() {
         <TabsList className="grid w-full max-w-md grid-cols-2 flex-shrink-0">
           <TabsTrigger value="entry" className="gap-1.5">
             <PenLine className="h-4 w-4" />
-            ReadMeter
+            จดมิเตอร์
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-1.5">
             <History className="h-4 w-4" />
-            HistoryMeter
+            ประวัติมิเตอร์
           </TabsTrigger>
         </TabsList>
         <TabsContent value="entry" className="mt-2 min-h-0 flex-1 overflow-hidden">

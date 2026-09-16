@@ -455,7 +455,7 @@ export function StockPage() {
   async function handleRejectPending() {
     if (!rejectingTxn) return
     if (!rejectReason.trim()) {
-      toast.error('PleaseSpecifycauseResultinReject')
+      toast.error('กรุณาระบุเหตุผลในการปฏิเสธ')
       return
     }
     try {
@@ -744,7 +744,7 @@ export function StockPage() {
   }
   async function savePo() {
     if (!poForm.orderDate) {
-      toast.error('PleaseSpecifyDateorder')
+      toast.error('กรุณาระบุวันที่สั่งซื้อ')
       return
     }
     const cleanLines = poLines.filter((l) => l.stockItemId)
@@ -1312,7 +1312,7 @@ export function StockPage() {
                           className="py-12 text-center text-slate-500 dark:text-slate-400"
                         >
                           <ClipboardList className="mx-auto mb-2 h-10 w-10 opacity-30" />
-                          <div className="text-sm">StillNonePurchase Order</div>
+                          <div className="text-sm">ยังไม่มีใบสั่งซื้อ</div>
                           <Button
                             variant="link"
                             size="sm"
@@ -2050,10 +2050,10 @@ export function StockPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  PersonDoitem
+                  ผู้ทำรายการ
                 </Label>
                 <Input
-                  value="SystemwillbindWithaccountatintoSystem"
+                  value="ระบบจะผูกกับบัญชีที่เข้าสู่ระบบ"
                   readOnly
                   aria-describedby="stock-transaction-actor-help"
                 />
@@ -2061,7 +2061,7 @@ export function StockPage() {
                   id="stock-transaction-actor-help"
                   className="text-[11px] text-slate-500 dark:text-slate-400"
                 >
-                  NoCanChangeNamePersonDoitemfromform
+                  ไม่สามารถเปลี่ยนชื่อผู้ทำรายการจากฟอร์มนี้ได้
                 </p>
               </div>
               <div className="space-y-1.5">
@@ -2267,7 +2267,7 @@ export function StockPage() {
                 </div>
                 {detailData.transactions.length === 0 ? (
                   <div className="rounded-md border border-dashed border-slate-300 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                    StillNoneHistoryStock In/Stock Out
+                    ยังไม่มีประวัติรับเข้า/เบิกออกสต๊อก
                   </div>
                 ) : (
                   <div className="max-h-72 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-700">

@@ -23231,3 +23231,40 @@ Stage Summary:
 - 3 isolation leaks fixed (warranty, lifecycle, utilization) + utilization 500 revived — the recurring "unscoped device query" bug class is now audited clean across all /api/devices/* routes.
 - 1 feature: warranty status widget (distribution + next-to-expire + smart click-through + skeleton + a11y + i18n).
 - All verified e2e (admin + demo_admin), VLM-reviewed. Ready to commit + push.
+
+---
+Task ID: QA-ROUND-2026-09-16-F
+Agent: orchestrator (cron webDevReview)
+Task: Scheduled QA round — fixed SSE realtime endpoint (unauthenticated + demo/site isolation leak + audit-actor leak); wired orphaned UtilizationSection into live paper-analytics tab; fixed utilization current-month data drop; mass-fixed mangled UI text (broken machine-translation) across 7 files
+
+Work Log:
+- QA: dev.log clean, all 200s. Full module walks as demo_admin (15 modules) and admin (10 modules): 0 console errors. Round E commit 9aa4e01 confirmed pushed, tree clean.
+- BUG FIX #1 (SSE realtime endpoint, src/app/api/realtime/sse/route.ts): endpoint was completely UNAUTHENTICATED and counted EVERY row in the DB (real + demo): demo_admin's dashboard header showed "20 dev · 26 wo" (12 real + 8 demo leaked) and the realtime card streamed the GLOBAL audit feed with real actors' names+summaries to demo users.
+  - Route now calls requireAuth(req, 'VIEW_DASHBOARD') — 401 without token (EventSource can't send headers; the middleware's ?t= query fallback is used).
+  - All queries scoped: devices (site + demoFilter), workOrders/pendingWO (siteCode + demo), StockItem lowStock (site + demo), warrantyExpiring (device scope + warranty window), AuditLog feed scoped by actor domain — demo users only see @itam.demo actors, real users never see demo actors (AuditLog.isDemo is NOT populated by logAudit — verified in DB — so email domain is the only trustworthy discriminator).
+  - Hook (src/hooks/use-realtime.ts): passes ?t= token, only connects while authenticated, closes on logout, no infinite 401 retry loop (checks EventSource.CLOSED).
+  - Verified: no-token→401, bad-token→401; demo KPI = 8 devices/16 WOs + only demo actors; admin = 12/10 + only real actors. Dashboard badges: demo "· 8 dev · 16 wo", admin "· 12 dev · 10 wo".
+  - Note: mini-services/realtime-service (socket.io, port 3003) has the same unscoped-counts issue but is NOT running and no client uses it (SSE replaced it). Left as-is; documented.
+- FEATURE #1 (Utilization tab): UtilizationSection (460-line heatmap component) existed only inside paper-analytics-page.tsx which is DEAD CODE (imported in home-client.tsx but never rendered — no nav path reaches it). Wired it into the LIVE ItamPaperAnalytics tabbed module as 5th tab "การใช้งาน" (own range selector, quarter default). Removed the dead dynamic import from home-client.tsx (file kept for reference). Cleaned dev-debug footer text (isDark display) + unused useTheme.
+- BUG FIX #2 (utilization current-month data drop): the API's readingDate window (`readingDate <= todayISO`) excluded month-end-dated readings for the CURRENT month (e.g. 2026-09-30 seeded reading vs today 2026-09-16) — all of September was missing for every device. Fixed by filtering `readingMonth IN (months)` (same semantics as dashboard trend + paper-analytics grouping). Verified: top device now [782,822,862,902,822,512]=4702 total (was 4190); Sept total across devices = 4,071 sheets == dashboard trend exactly (cross-view consistency).
+- FEATURE #2 (utilization CSV export): added CSV button to the utilization card — exports device × month matrix + totals + avg + score + trend. Verified via blob capture: 11 rows, Thai month headers, correct values.
+- FEATURE #3 / STYLING (mass mangled-text cleanup): discovered systematic broken machine-translation across 7 component files (an old automated Thai→English replace gone wrong; e.g. "PersonDo", "StillNoneTable PM", "FeeBeforefront", "CreateTable PM", "ReadMeter", "SaveNoSuccess", "unitsPrint"). IMPORTANT LESSON: the Bash tool's rg/sed DISPLAY corrupts Thai text intermittently — all edits were verified with the Read tool (faithful) before applying; Edit tool matches real file content so successful edits = genuinely mangled strings.
+  - itam-audit.tsx: full ACTION_LABELS map (65+ actions) rewritten in proper Thai; filter bar (การกระทำ/ผู้ดำเนินการ/ค้นหา/จากวันที่/ถึงวันที่/ล้าง); table headers; empty state; pagination (ก่อนหน้า/ถัดไป); CSV headers; toasts; export title.
+  - pm-schedules-page.tsx: ~50 strings — tabs (ตารางงาน/ปฏิทิน), empty states, table headers (ผัง PM/วันที่ตั้ง/วันที่ทำจริง/ผู้ปฏิบัติงาน), DEVICE_TYPE_LABELS, target-group quick chips (เครื่องพิมพ์/เครื่องถ่ายเอกสาร/มัลติฟังก์ชัน/คอมพิวเตอร์/อุปกรณ์เครือข่าย), deactivate dialog, form labels/placeholders, countdown/toast texts, error fallbacks.
+  - meter-page.tsx + itam-meter-unified.tsx: page headers (จดมิเตอร์), cycle countdown bar (3-phase Thai), manage/create cycle buttons + dialog, CSV headers, reading dialog, RESET validation messages, table headers, empty states.
+  - itam-settings.tsx: notify-events labels, credentials card (incl. restoring a mistakenly-removed error-message expression + CardHeader/</p> structure), passkey help section, save toasts.
+  - stock-page.tsx: transaction actor field (ผู้ทำรายการ), reject/PO-date validations, PO + stock-history empty states.
+  - meter CSV/custom-export column headers (both files).
+- Regression: tsc --noEmit clean; bun run lint 0 errors (115 warnings, unchanged count); e2e: admin + demo_admin full walks 0 console errors; mangle-check across 6 affected pages = clean (no PersonDo/StillNone/CreateTable/ReadMeter/etc. visible); VLM review of meter page: "fully localized with correct Thai terminology... No critical errors found"; utilization tab verified admin (heatmap+CSV+Sept data) and demo (DEMO-* devices only).
+
+Known issues (not fixed, documented):
+- Remaining mangled text in: work-orders-page.tsx (~15 hits), monthly-report.tsx (~9), templates-page.tsx (~6), material-cost-report.tsx (~3), reports-hub.tsx (~1) — next round should finish the sweep with the Read-verify-then-edit method.
+- paper-analytics-page.tsx is dead code (861 lines) — kept for parts-mining; candidate for deletion after UtilizationSection extraction.
+- mini-services/realtime-service (socket.io) unscoped — not running, unused; either patch or delete.
+- 115 pre-existing lint warnings; i18n dictionary coverage (large).
+- next-themes dev-only warning + Turbopack Fast-Refresh transient errors — dev-only, ignore.
+
+Stage Summary:
+- 2 real bugs fixed: SSE endpoint security+isolation (unauth 401 + demo/site scope + actor-domain audit scope), utilization current-month data drop (readingMonth filter).
+- 3 features: Utilization heatmap tab (wired from dead code), utilization CSV export, meter/PM/audit/settings/stock pages fully re-localized to proper Thai (~120 strings across 7 files).
+- All verified e2e (admin + demo_admin), VLM-reviewed. Ready to commit + push.

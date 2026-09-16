@@ -45,15 +45,15 @@ import { useAppStore } from '@/store/app-store'
 import { useT, useFormatDateTime, useLang } from '@/store/i18n-store'
 
 const METER_CSV_HEADERS = [
-  { key: 'date', label: 'Date' },
-  { key: 'assetCode', label: 'CodeDevice' },
-  { key: 'deviceName', label: 'NameDevice' },
-  { key: 'brand', label: 'Brand' },
-  { key: 'model', label: 'Model' },
-  { key: 'prevReading', label: 'FeeBeforefront' },
-  { key: 'reading', label: 'FeeMeter' },
-  { key: 'delta', label: 'Variance' },
-  { key: 'remark', label: 'Remark' },
+  { key: 'date', label: 'วันที่' },
+  { key: 'assetCode', label: 'รหัสอุปกรณ์' },
+  { key: 'deviceName', label: 'ชื่ออุปกรณ์' },
+  { key: 'brand', label: 'ยี่ห้อ' },
+  { key: 'model', label: 'รุ่น' },
+  { key: 'prevReading', label: 'ค่ามิเตอร์ก่อนหน้า' },
+  { key: 'reading', label: 'ค่ามิเตอร์ล่าสุด' },
+  { key: 'delta', label: 'ผลต่าง' },
+  { key: 'remark', label: 'หมายเหตุ' },
 ]
 
 interface ReminderDevice {
@@ -190,12 +190,12 @@ export function MeterPage() {
     // missing; now we surface a clear message explaining the constraint.
     if (isReset && needsRemark) {
       toast.error(
-        `FeeNew (${newReadingNum.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) less thanFeeBeforefront (${prevReading.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) — PleaseSpecifyRemark RESET (e.g. Change Drum/unitsPrintNew)`,
+        `ค่าใหม่ (${newReadingNum.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) น้อยกว่าค่าก่อนหน้า (${prevReading.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) — โปรดระบุหมายเหตุ RESET (เช่น เปลี่ยนดรัม/ตัวนับใหม่)`,
       )
       return
     }
     if (isReset && !remark.trim()) {
-      toast.error('FeeMeterReducedown — MustSpecifyRemark RESET BeforeSave')
+      toast.error('ค่ามิเตอร์ลดลง — ต้องระบุหมายเหตุ RESET ก่อนบันทึก')
       return
     }
     try {
@@ -219,7 +219,7 @@ export function MeterPage() {
       if (json.warning) {
         toast.warning(json.warning)
       } else {
-        toast.success('SaveReadMeter')
+        toast.success('บันทึกการอ่านค่ามิเตอร์เรียบร้อย')
       }
       setReadingTarget(null)
       await qc.invalidateQueries({ queryKey: ['devices-meter'] })
@@ -272,9 +272,9 @@ export function MeterPage() {
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ReadMeter</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จดมิเตอร์</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            SavereadFeeMeterunitsPrint / captureDocument
+            บันทึกค่ามิเตอร์หน่วยพิมพ์ / ถ่ายเอกสาร
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -285,7 +285,7 @@ export function MeterPage() {
             className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             <ClipboardList className="h-4 w-4" />
-            ReadMetermanyunits
+            จดมิเตอร์หลายเครื่อง
           </Button>
           <Button
             variant="outline"
@@ -293,7 +293,7 @@ export function MeterPage() {
             className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             <CalendarClock className="h-4 w-4" />
-            ManageCycle
+            จัดการรอบ
           </Button>
           <Button
             variant="outline"
@@ -330,7 +330,7 @@ export function MeterPage() {
           <CardHeader className="relative">
             <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
               <CalendarClock className="h-4 w-4 text-[#f97316]" />
-              CycleReadMeterCurrent
+              รอบจดมิเตอร์ปัจจุบัน
             </CardTitle>
           </CardHeader>
           <CardContent className="relative">
@@ -348,8 +348,8 @@ export function MeterPage() {
               </div>
             ) : (
               <div className="flex flex-col items-start gap-1 text-sm text-slate-400 dark:text-slate-500">
-                <span className="font-medium">StillNoneCycleReadMeteratblackhill</span>
-                <span className="text-xs">Clickbutton &quot;ManageCycle&quot; forCreateCycleNew</span>
+                <span className="font-medium">ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ</span>
+                <span className="text-xs">คลิกปุ่ม &quot;จัดการรอบ&quot; เพื่อสร้างรอบใหม่</span>
               </div>
             )}
           </CardContent>
@@ -397,7 +397,7 @@ export function MeterPage() {
               <Skeleton className="h-10 w-full dark:bg-slate-800" />
             ) : !remindersData?.hasActiveCycle ? (
               <p className="text-xs text-slate-400 dark:text-slate-500">
-                StillNoneCycleatblackhill
+                ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
               </p>
             ) : (
               <>
@@ -433,10 +433,10 @@ export function MeterPage() {
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                    ⚠️ StillNoReadMeter {remindersData.totalUnread} from {totalMeterable} unitsinCycleCurrent
+                    ⚠️ ยังไม่ได้จด {remindersData.totalUnread} จาก {totalMeterable} เครื่องในรอบปัจจุบัน
                   </div>
                   <div className="text-xs text-amber-700 dark:text-amber-300/80">
-                    Cycle: {remindersData.cycle?.name} · Read {readCount} units ({readPct}%)
+                    รอบ: {remindersData.cycle?.name} · จดแล้ว {readCount} เครื่อง ({readPct}%)
                   </div>
                 </div>
               </div>
@@ -455,10 +455,10 @@ export function MeterPage() {
               </div>
               <div>
                 <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-                  ✅ ReadMetercompleteAllunitsinCycleCurrent
+                  ✅ จดมิเตอร์ครบทุกเครื่องในรอบปัจจุบันแล้ว
                 </div>
                 <div className="text-xs text-emerald-700 dark:text-emerald-300/80">
-                  Total {totalMeterable} units · Cycle {remindersData.cycle?.name}
+                  ทั้งหมด {totalMeterable} เครื่อง · รอบ {remindersData.cycle?.name}
                 </div>
               </div>
             </div>
@@ -469,7 +469,7 @@ export function MeterPage() {
       {/* Devices table */}
       <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900" >
         <CardHeader>
-          <CardTitle className="text-base text-slate-800 dark:text-slate-100">itemDeviceatMustReadMeter</CardTitle>
+          <CardTitle className="text-base text-slate-800 dark:text-slate-100">รายการอุปกรณ์ที่ต้องจดมิเตอร์</CardTitle>
         </CardHeader>
         <CardContent>
           <div
@@ -482,12 +482,12 @@ export function MeterPage() {
                   <TableHead className="text-slate-600 dark:text-slate-300">{t('settings.col.code')}</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">{t('settings.col.name')}</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.brand_model')}</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Type</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Status</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Site</TableHead>
-                  <TableHead className="text-right text-slate-600 dark:text-slate-300">FeeLatest</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">StatusCycle</TableHead>
-                  <TableHead className="text-right text-slate-600 dark:text-slate-300">ReadMeter</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
+                  <TableHead className="text-right text-slate-600 dark:text-slate-300">ค่ามิเตอร์ล่าสุด</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">สถานะรอบ</TableHead>
+                  <TableHead className="text-right text-slate-600 dark:text-slate-300">จดมิเตอร์</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -507,10 +507,10 @@ export function MeterPage() {
                           <Gauge className="h-7 w-7 text-slate-300 dark:text-slate-400" />
                         </div>
                         <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                          Not foundDeviceatMustReadMeter
+                          ไม่พบอุปกรณ์ที่ต้องจดมิเตอร์
                         </div>
                         <div className="text-xs text-slate-400 dark:text-slate-500">
-                          SystemwillShowOnlyunitsPrint/captureDocument/MFP atStillNocutofout — AddDeviceatfrontManageDevice
+                          ระบบจะแสดงเฉพาะเครื่องพิมพ์/ถ่ายเอกสาร/MFP ที่ยังไม่ได้จด — เพิ่มอุปกรณ์ที่หน้าจัดการอุปกรณ์
                         </div>
                       </div>
                     </TableCell>
@@ -567,7 +567,7 @@ export function MeterPage() {
                             className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                           >
                             <Gauge className="h-3.5 w-3.5" />
-                            ReadMeter
+                            จดมิเตอร์
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -587,7 +587,7 @@ export function MeterPage() {
       >
         <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
-            <DialogTitle className="text-slate-800 dark:text-slate-100">📈 ReadMeter</DialogTitle>
+            <DialogTitle className="text-slate-800 dark:text-slate-100">📈 จดมิเตอร์</DialogTitle>
             <DialogDescription>
               {readingTarget?.name} ({readingTarget?.assetCode})
             </DialogDescription>
@@ -597,7 +597,7 @@ export function MeterPage() {
             <div className="space-y-3">
               <div className="rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">FeeBeforefront</span>
+                  <span className="text-slate-500 dark:text-slate-400">ค่ามิเตอร์ก่อนหน้า</span>
                   <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
                     {prevReading.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                   </span>
@@ -637,7 +637,7 @@ export function MeterPage() {
 
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  DateRead *
+                  วันที่จด *
                 </Label>
                 <Input
                   type="date"
@@ -666,7 +666,7 @@ export function MeterPage() {
                 <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    FeeNewless thanFeeBeforefront ({delta.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) MustSpecifyRemarkforConfirm RESET
+                    ค่าใหม่น้อยกว่าค่าก่อนหน้า ({delta.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) ต้องระบุหมายเหตุเพื่อยืนยันการ RESET
                   </span>
                 </div>
               )}

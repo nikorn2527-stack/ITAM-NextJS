@@ -1,5 +1,9 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
+import { siteFilterForUser, getAllowedSites } from '@/lib/auth'
+import { demoFilter, isDemoUser } from '@/lib/demo-mode'
+import type { UserPermissionRow } from '@/lib/auth'
 
 /**
  * GET /api/realtime/sse
@@ -9,6 +13,21 @@ import { db } from '@/lib/db'
  *
  * This replaces socket.io — works through the Caddy gateway normally
  * (no need for XTransformPort since it's a standard HTTP response stream).
+ *
+ * QA-ROUND-2026-09-16-F (demo/site isolation): the KPI payload used to count
+ * EVERY row in the DB (real + demo) and stream the global audit feed — leaking
+ * real hospital device counts, work-order counts AND real actors' activity
+ * summaries to demo users (and vice versa). The route also accepted
+ * UNAUTHENTICATED connections. Now:
+ *   1. requireAuth() gates the stream (EventSource can't send headers, so the
+ *      middleware's `?t=<jwt>` URL fallback is used by the client hook).
+ *   2. Every query is scoped by site (User.allowedSites / UserSiteGrant via
+ *      siteFilterForUser/getAllowedSites) AND demo scope (demoFilter).
+ *   3. The activity feed is scoped by actor domain: demo users only ever see
+ *      rows written by @itam.demo actors, real users never see demo actors.
+ *      (AuditLog.isDemo is not reliably populated by logAudit, so the email
+ *      domain is the trustworthy discriminator — all demo accounts use
+ *      @itam.demo.)
  *
  * SPRINT-1 #8 (DEV-HANDOVER B-03): SSE connection leak fix.
  *   Previously the `setInterval` timers (interval + heartbeat) were only
@@ -28,6 +47,15 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes — client reconnects automatically
 
 export async function GET(_req: NextRequest) {
+  // Auth: EventSource cannot send an Authorization header, but
+  // requireAuth()'s extractBearer() falls back to the `?t=` URL query param
+  // — the client hook appends it to the EventSource URL.
+  const auth = await requireAuth(_req, 'VIEW_DASHBOARD')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+  const user = auth.row
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -49,7 +77,7 @@ export async function GET(_req: NextRequest) {
       async function sendKpi() {
         if (closed) return
         try {
-          const kpi = await getKpi()
+          const kpi = await getKpi(user)
           safeEnqueue(`event: kpi\ndata: ${JSON.stringify(kpi)}\n\n`)
         } catch (err) {
           console.error('[sse] sendKpi error:', err)
@@ -101,19 +129,41 @@ export async function GET(_req: NextRequest) {
   })
 }
 
-async function getKpi() {
+async function getKpi(user: UserPermissionRow) {
   const today = new Date()
   const future = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)
   const todayStr = today.toISOString().slice(0, 10)
   const futureStr = future.toISOString().slice(0, 10)
 
+  // ── Scoping (mirrors /api/itam/dashboard) ─────────────────────────────
+  // Site: restrict to the user's allowed sites (siteCode on WorkOrder /
+  // AuditLog, site on Device / StockItem). Demo: demo users see only demo
+  // data, real users see only real data.
+  const demo = demoFilter(user)
+  const userSites = getAllowedSites(user)
+  const deviceWhere = { ...siteFilterForUser(user), ...demo }
+  const woSite = userSites === 'ALL' ? {} : { siteCode: { in: userSites } }
+  const stockSite = userSites === 'ALL' ? {} : { site: { in: userSites } }
+  // Activity feed: AuditLog rows are not isDemo-tagged by logAudit, so we
+  // discriminate by actor email domain — every demo account is @itam.demo.
+  // Demo users NEVER see real users' activity; real users never see demo's.
+  const demoActor = { actor: { endsWith: '@itam.demo' } }
+  const realActor = { NOT: { actor: { endsWith: '@itam.demo' } } }
+  const auditWhere = { ...(isDemoUser(user) ? demoActor : realActor) }
+
   const [devices, workOrders, pendingWO, lowStockRows, warrantyExpiring, recentActivities] = await Promise.all([
-    db.device.count(),
-    db.workOrder.count(),
-    db.workOrder.count({ where: { status: { in: ['PENDING', 'ASSIGNED', 'IN_PROGRESS'] } } }).catch(() => 0),
-    db.stockItem.findMany({ where: {}, select: { quantity: true, minQuantity: true } }).catch(() => []),
+    db.device.count({ where: deviceWhere }),
+    db.workOrder.count({ where: { ...woSite, ...demo } }),
+    db.workOrder.count({
+      where: { ...woSite, ...demo, status: { in: ['PENDING', 'ASSIGNED', 'IN_PROGRESS'] } },
+    }).catch(() => 0),
+    db.stockItem.findMany({
+      where: { ...stockSite, ...demo },
+      select: { quantity: true, minQuantity: true },
+    }).catch(() => []),
     db.device.count({
       where: {
+        ...deviceWhere,
         warrantyEnd: { not: null, gte: todayStr, lte: futureStr },
       },
     }).catch(() => 0),
@@ -122,6 +172,7 @@ async function getKpi() {
     // the "กิจกรรมล่าสุด" panel useless in dev/QA. Take up to 5 non-LOGIN
     // entries first; fall back to LOGIN entries only if nothing else exists.
     db.auditLog.findMany({
+      where: auditWhere,
       take: 15,
       orderBy: { createdAt: 'desc' },
       select: { action: true, entity: true, summary: true, actor: true, createdAt: true },
