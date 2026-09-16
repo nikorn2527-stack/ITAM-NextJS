@@ -203,7 +203,7 @@ const UNITS = ['pcs', 'box', 'pack', 'roll', 'box', 'bottles']
 
 function formatBaht(value: number | null | undefined, lang: 'th' | 'en' = 'th'): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
-  return `THB${value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
+  return `฿${value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
@@ -232,7 +232,7 @@ function todayISO(): string {
 function printDocument(url: string) {
   const win = window.open(url, '_blank', 'width=900,height=700,noopener,noreferrer')
   if (!win) {
-    toast.error('NoCanClosefrontdifferentPrint PleaseAllow Pop-up inbrowser')
+    toast.error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต Pop-up ในเบราว์เซอร์')
   }
 }
 
@@ -435,9 +435,9 @@ export function StockPage() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'ApproveNoSuccess')
+        throw new Error(j.error ?? 'อนุมัติไม่สำเร็จ')
       }
-      toast.success(`ApproveStock Out ${t.productCode ?? ''} Success`)
+      toast.success(`อนุมัติการเบิกออก ${t.productCode ?? ''} สำเร็จ`)
       setApprovingTxn(null)
       await qc.invalidateQueries({ queryKey: ['stock-pending'] })
       await qc.invalidateQueries({ queryKey: ['stock-items'] })
@@ -446,7 +446,7 @@ export function StockPage() {
         await qc.invalidateQueries({ queryKey: ['stock-item-detail', detailId] })
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ApproveNoSuccess')
+      toast.error(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ')
     } finally {
       setApproving(false)
     }
@@ -473,14 +473,14 @@ export function StockPage() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'RejectNoSuccess')
+        throw new Error(j.error ?? 'ปฏิเสธไม่สำเร็จ')
       }
-      toast.success(`RejectRequestStock Out ${rejectingTxn.productCode ?? ''} `)
+      toast.success(`ปฏิเสธคำขอเบิกออก ${rejectingTxn.productCode ?? ''} `)
       setRejectingTxn(null)
       setRejectReason('')
       await qc.invalidateQueries({ queryKey: ['stock-pending'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'RejectNoSuccess')
+      toast.error(e instanceof Error ? e.message : 'ปฏิเสธไม่สำเร็จ')
     } finally {
       setRejecting(false)
     }
@@ -577,7 +577,7 @@ export function StockPage() {
   }
   async function saveItem() {
     if (!itemForm.productName) {
-      toast.error('PleasePendingNameProduct')
+      toast.error('กรุณาระบุชื่อสินค้า')
       return
     }
     try {
@@ -617,10 +617,10 @@ export function StockPage() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'Save failed')
+        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
       }
       const json = await res.json()
-      toast.success(isEdit ? 'EditProduct' : 'AddProductNew')
+      toast.success(isEdit ? 'แก้ไขสินค้าแล้ว' : 'เพิ่มสินค้าใหม่แล้ว')
       setItemDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['stock-items'] })
       if (isEdit && detailId === itemForm.id) {
@@ -628,10 +628,10 @@ export function StockPage() {
       }
       // Surface auto-generated productCode after create.
       if (!isEdit && json?.data?.productCode) {
-        toast.info(`CodeProductNew: ${json.data.productCode}`)
+        toast.info(`รหัสสินค้าใหม่: ${json.data.productCode}`)
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
       setSavingItem(false)
     }
@@ -647,13 +647,13 @@ export function StockPage() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'Delete failed')
+        throw new Error(j.error ?? 'ลบไม่สำเร็จ')
       }
-      toast.success('DeleteProduct')
+      toast.success('ลบสินค้าแล้ว')
       setDeleteTarget(null)
       await qc.invalidateQueries({ queryKey: ['stock-items'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Delete failed')
+      toast.error(e instanceof Error ? e.message : 'ลบไม่สำเร็จ')
     } finally {
       setDeleting(false)
     }
@@ -675,11 +675,11 @@ export function StockPage() {
     if (!txnTarget) return
     const qty = Number(txnForm.quantity)
     if (!Number.isFinite(qty) || qty < 0) {
-      toast.error('PleasePendingQuantityatcorrectMust')
+      toast.error('กรุณาระบุจำนวนให้ถูกต้อง')
       return
     }
     if ((txnForm.type === 'IN' || txnForm.type === 'OUT') && qty <= 0) {
-      toast.error('QuantityForStock In/Stock OutMustComemore than 0')
+      toast.error('จำนวนสำหรับรับเข้า/เบิกออกต้องมากกว่า 0')
       return
     }
     try {
@@ -700,23 +700,23 @@ export function StockPage() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'Transaction failed')
+        throw new Error(j.error ?? 'ทำรายการไม่สำเร็จ')
       }
       const json = await res.json()
       const verb =
         txnForm.type === 'IN'
-          ? 'Stock In'
+          ? 'รับเข้า'
           : txnForm.type === 'OUT'
-          ? 'Stock Out'
-          : 'Update'
-      toast.success(`${verb}Success — Remaining ${json.data.item.quantity} ${json.data.item.unit}`)
+          ? 'เบิกออก'
+          : 'ปรับสต๊อก'
+      toast.success(`${verb}สำเร็จ — คงเหลือ ${json.data.item.quantity} ${json.data.item.unit}`)
       setTxnDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['stock-items'] })
       if (detailId === txnTarget.id) {
         await qc.invalidateQueries({ queryKey: ['stock-item-detail', detailId] })
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Transaction failed')
+      toast.error(e instanceof Error ? e.message : 'ทำรายการไม่สำเร็จ')
     } finally {
       setSavingTxn(false)
     }
@@ -749,7 +749,7 @@ export function StockPage() {
     }
     const cleanLines = poLines.filter((l) => l.stockItemId)
     if (cleanLines.length === 0) {
-      toast.error('MustAddLikeless 1 itemProduct')
+      toast.error('ต้องเพิ่มอย่างน้อย 1 รายการสินค้า')
       return
     }
     try {
@@ -771,17 +771,17 @@ export function StockPage() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'Save failed')
+        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
       }
       const json = await res.json()
-      toast.success('CreatePurchase Order')
+      toast.success('สร้างใบสั่งซื้อแล้ว')
       if (json?.data?.poNumber) {
-        toast.info(`No.atPurchase Order: ${json.data.poNumber}`)
+        toast.info(`เลขที่ใบสั่งซื้อ: ${json.data.poNumber}`)
       }
       setPoDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['purchase-orders'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
       setSavingPo(false)
     }
@@ -792,18 +792,18 @@ export function StockPage() {
     if (type === 'IN')
       return (
         <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-          Stock In
+          รับเข้า
         </Badge>
       )
     if (type === 'OUT')
       return (
         <Badge className="border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
-          Stock Out
+          เบิกออก
         </Badge>
       )
     return (
       <Badge className="border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-        Update
+        ปรับสต๊อก
       </Badge>
     )
   }
@@ -819,9 +819,9 @@ export function StockPage() {
         'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300',
     }
     const labelMap: Record<string, string> = {
-      open: 'CloseAt',
-      partial: 'ReceivesomeSection',
-      received: 'Receivecomplete',
+      open: 'เปิดอยู่',
+      partial: 'รับบางส่วน',
+      received: 'รับครบแล้ว',
       cancelled: t('common.cancel'),
     }
     return (
@@ -833,27 +833,27 @@ export function StockPage() {
     if (status === 'PENDING') {
       return (
         <Badge className="border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          PendingApprove
+          รอการอนุมัติ
         </Badge>
       )
     }
     if (status === 'APPROVED') {
       return (
         <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-          Approve
+          อนุมัติแล้ว
         </Badge>
       )
     }
     if (status === 'REJECTED') {
       return (
         <Badge className="border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
-          Reject
+          ปฏิเสธ
         </Badge>
       )
     }
     return (
       <Badge className="border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-        Doitem
+        ทำรายการ
       </Badge>
     )
   }
@@ -861,23 +861,23 @@ export function StockPage() {
   // ---------- KPI cards ----------
   const KPI_CARDS = [
     {
-      title: 'itemAll',
+      title: 'ทั้งหมด',
       value: stats.total,
       icon: <Package className="h-5 w-5" />,
       accent: 'bg-[#f97316] text-white',
       soft: 'bg-orange-50 dark:bg-orange-950/40',
-      format: (v: number) => `${v} item`,
+      format: (v: number) => `${v} รายการ`,
     },
     {
-      title: 'StockLow',
+      title: 'สต๊อกต่ำ',
       value: stats.lowStock,
       icon: <AlertTriangle className="h-5 w-5" />,
       accent: 'bg-rose-500 text-white',
       soft: 'bg-rose-50 dark:bg-rose-950/40',
-      format: (v: number) => `${v} item`,
+      format: (v: number) => `${v} รายการ`,
     },
     {
-      title: 'ValueTotal',
+      title: 'มูลค่ารวม',
       value: stats.totalValue,
       icon: <Wallet className="h-5 w-5" />,
       accent: 'bg-teal-600 text-white',
@@ -885,12 +885,12 @@ export function StockPage() {
       format: (v: number) => formatBaht(v, lang),
     },
     {
-      title: 'itemmonths',
+      title: 'รายการเดือนนี้',
       value: stats.thisMonth,
       icon: <CalendarPlus className="h-5 w-5" />,
       accent: 'bg-slate-700 text-white',
       soft: 'bg-slate-100 dark:bg-slate-800/60',
-      format: (v: number) => `${v} item`,
+      format: (v: number) => `${v} รายการ`,
     },
   ]
 
@@ -901,10 +901,10 @@ export function StockPage() {
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-            📦 StockProduct
+            📦 สินค้าในสต๊อก
           </h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-            ManageProductInventory Stock In/Stock Out andPurchase Order
+            จัดการสินค้าในคลัง รับเข้า-เบิกออก และใบสั่งซื้อ
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -914,7 +914,7 @@ export function StockPage() {
             className="order-first w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:order-none sm:w-auto"
           >
             <Plus className="mr-1.5 h-3.5 w-3.5" />
-            AddProduct
+            เพิ่มสินค้า
           </Button>
           <Button
             variant="outline"
@@ -923,7 +923,7 @@ export function StockPage() {
             className="border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-300 dark:hover:bg-teal-950/40"
           >
             <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
-            CreatePurchase Order
+            สร้างใบสั่งซื้อ
           </Button>
           <Button
             variant="outline"
@@ -932,7 +932,7 @@ export function StockPage() {
             className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            Refresh
+            รีเฟรช
           </Button>
         </div>
       </div>
@@ -982,15 +982,15 @@ export function StockPage() {
         <TabsList className="bg-slate-100 dark:bg-slate-800">
           <TabsTrigger value="items">
             <Package2 className="mr-1.5 h-3.5 w-3.5" />
-            ProductInventory
+            สินค้าในคลัง
           </TabsTrigger>
           <TabsTrigger value="po">
             <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
-            Purchase Order
+            ใบสั่งซื้อ
           </TabsTrigger>
           <TabsTrigger value="pending">
             <Hourglass className="mr-1.5 h-3.5 w-3.5" />
-            PendingApprove
+            รอการอนุมัติ
           </TabsTrigger>
         </TabsList>
 
@@ -1001,28 +1001,28 @@ export function StockPage() {
             <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <Label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Search
+                  ค้นหา
                 </Label>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="CodeProduct Name Brand Model..."
+                    placeholder="รหัสสินค้า ชื่อ ยี่ห้อ รุ่น..."
                     className="pl-8"
                   />
                 </div>
               </div>
               <div className="w-full sm:w-56">
                 <Label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Category
+                  หมวดหมู่
                 </Label>
                 <Select value={category} onValueChange={setCategory}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">CategoryAll</SelectItem>
+                    <SelectItem value="all">ทุกหมวดหมู่</SelectItem>
                     {CATEGORIES.map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
@@ -1035,10 +1035,10 @@ export function StockPage() {
                 <Switch
                   checked={lowStockOnly}
                   onCheckedChange={setLowStockOnly}
-                  aria-label="FilterStockLow"
+                  aria-label="กรองสต๊อกต่ำ"
                 />
                 <Label className="cursor-pointer text-xs font-medium text-slate-600 dark:text-slate-300">
-                  ShowOnlyStockLow
+                  แสดงเฉพาะสต๊อกต่ำ
                 </Label>
               </div>
             </CardContent>
@@ -1051,14 +1051,14 @@ export function StockPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-slate-50 dark:bg-slate-800/60">
-                      <TableHead className="w-28">CodeProduct</TableHead>
-                      <TableHead>NameProduct</TableHead>
+                      <TableHead className="w-28">รหัสสินค้า</TableHead>
+                      <TableHead>ชื่อสินค้า</TableHead>
                       <TableHead className="w-32">{t('settings.col.category')}</TableHead>
-                      <TableHead className="w-20 text-right">Remaining</TableHead>
-                      <TableHead className="w-20">Unit</TableHead>
-                      <TableHead className="w-24 text-right">Price/Unit</TableHead>
-                      <TableHead className="w-28 text-right">ValueTotal</TableHead>
-                      <TableHead className="w-56 text-right">Actions</TableHead>
+                      <TableHead className="w-20 text-right">คงเหลือ</TableHead>
+                      <TableHead className="w-20">หน่วย</TableHead>
+                      <TableHead className="w-24 text-right">ราคา/หน่วย</TableHead>
+                      <TableHead className="w-28 text-right">มูลค่ารวม</TableHead>
+                      <TableHead className="w-56 text-right">การดำเนินการ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1079,14 +1079,14 @@ export function StockPage() {
                           className="py-12 text-center text-slate-500 dark:text-slate-400"
                         >
                           <Package className="mx-auto mb-2 h-10 w-10 opacity-30" />
-                          <div className="text-sm">Not foundProductinStock</div>
+                          <div className="text-sm">ไม่พบสินค้าในสต๊อก</div>
                           <Button
                             variant="link"
                             size="sm"
                             onClick={openAddItem}
                             className="mt-2 text-[#f97316] hover:text-[#ea580c]"
                           >
-                            AddProductNew
+                            เพิ่มสินค้าใหม่
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -1137,7 +1137,7 @@ export function StockPage() {
                               {item.quantity}
                               {low && item.minQuantity > 0 && (
                                 <div className="text-[10px] font-normal text-rose-500">
-                                  Lowthan {item.minQuantity}
+                                  ต่ำกว่า {item.minQuantity}
                                 </div>
                               )}
                             </TableCell>
@@ -1157,7 +1157,7 @@ export function StockPage() {
                                   variant="ghost"
                                   className="h-8 px-2 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
                                   onClick={() => openTxn(item, 'IN')}
-                                  title="Stock In"
+                                  title="รับเข้า"
                                 >
                                   <ArrowDownToLine className="h-3.5 w-3.5" />
                                 </Button>
@@ -1166,7 +1166,7 @@ export function StockPage() {
                                   variant="ghost"
                                   className="h-8 px-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
                                   onClick={() => openTxn(item, 'OUT')}
-                                  title="Stock Out"
+                                  title="เบิกออก"
                                   disabled={item.quantity <= 0}
                                 >
                                   <ArrowUpFromLine className="h-3.5 w-3.5" />
@@ -1176,7 +1176,7 @@ export function StockPage() {
                                   variant="ghost"
                                   className="h-8 px-2 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
                                   onClick={() => openTxn(item, 'ADJUST')}
-                                  title="Update"
+                                  title="ปรับสต๊อก"
                                 >
                                   <SlidersHorizontal className="h-3.5 w-3.5" />
                                 </Button>
@@ -1188,7 +1188,7 @@ export function StockPage() {
                                     setDetailId(item.id)
                                     setDetailOpen(true)
                                   }}
-                                  title="ViewDetails"
+                                  title="ดูรายละเอียด"
                                 >
                                   <Eye className="h-3.5 w-3.5" />
                                 </Button>
@@ -1227,7 +1227,7 @@ export function StockPage() {
         <TabsContent value="po" className="mt-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Purchase OrderAll ({purchaseOrders.length} item)
+              ใบสั่งซื้อทั้งหมด ({purchaseOrders.length} รายการ)
             </h3>
             <div className="flex items-center gap-2">
               <Button
@@ -1237,15 +1237,15 @@ export function StockPage() {
                 onClick={() => {
                   const rows: (string | number | null | undefined)[][] = [
                     [
-                      'No.atPurchase Order',
-                      'Dateorder',
-                      'Supplier',
-                      'Quantityitem',
+                      'เลขที่ใบสั่งซื้อ',
+                      'วันที่สั่งซื้อ',
+                      'ผู้จัดจำหน่าย',
+                      'จำนวนรายการ',
                       t('common.status'),
-                      'ValueTotal',
-                      'Personorder',
+                      'มูลค่ารวม',
+                      'ผู้สั่งซื้อ',
                       t('common.remark'),
-                      'itemProduct',
+                      'รายการสินค้า',
                     ],
                   ]
                   for (const po of purchaseOrders) {
@@ -1269,13 +1269,13 @@ export function StockPage() {
                   }
                   const fname = `purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`
                   downloadCSV(fname, rows)
-                  toast.success(`Export ${purchaseOrders.length} Purchase Orderas CSV `)
+                  toast.success(`ส่งออกใบสั่งซื้อ ${purchaseOrders.length} รายการเป็น CSV แล้ว`)
                 }}
                 className="h-8 border-slate-300 px-3 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                title="ExportPurchase OrderAllas CSV"
+                title="ส่งออกใบสั่งซื้อทั้งหมดเป็น CSV"
               >
                 <FileDown className="mr-1.5 h-3.5 w-3.5" />
-                Export CSV
+                ส่งออก CSV
               </Button>
             </div>
           </div>
@@ -1285,13 +1285,13 @@ export function StockPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-slate-50 dark:bg-slate-800/60">
-                      <TableHead className="w-36">No.atPurchase Order</TableHead>
-                      <TableHead className="w-32">Dateorder</TableHead>
-                      <TableHead>Supplier</TableHead>
-                      <TableHead className="w-24 text-right">item</TableHead>
-                      <TableHead className="w-32 text-right">ValueTotal</TableHead>
-                      <TableHead className="w-28">Status</TableHead>
-                      <TableHead className="w-32 text-right">Actions</TableHead>
+                      <TableHead className="w-36">เลขที่ใบสั่งซื้อ</TableHead>
+                      <TableHead className="w-32">วันที่สั่งซื้อ</TableHead>
+                      <TableHead>ผู้จัดจำหน่าย</TableHead>
+                      <TableHead className="w-24 text-right">รายการ</TableHead>
+                      <TableHead className="w-32 text-right">มูลค่ารวม</TableHead>
+                      <TableHead className="w-28">สถานะ</TableHead>
+                      <TableHead className="w-32 text-right">การดำเนินการ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1319,7 +1319,7 @@ export function StockPage() {
                             onClick={openAddPo}
                             className="mt-2 text-[#f97316] hover:text-[#ea580c]"
                           >
-                            CreatePurchase OrderNew
+                            สร้างใบสั่งซื้อใหม่
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -1339,7 +1339,7 @@ export function StockPage() {
                             {po.supplier ?? '—'}
                           </TableCell>
                           <TableCell className="text-right text-slate-600 dark:text-slate-300">
-                            {po.items?.length ?? 0} item
+                            {po.items?.length ?? 0} รายการ
                           </TableCell>
                           <TableCell className="text-right font-medium text-slate-700 dark:text-slate-200">
                             {formatBaht(po.totalValue, lang)}
@@ -1353,10 +1353,10 @@ export function StockPage() {
                               onClick={() =>
                                 printDocument(`/api/purchase-orders/${po.id}/print`)
                               }
-                              title="PrintPurchase Order"
+                              title="พิมพ์ใบสั่งซื้อ"
                             >
                               <Printer className="mr-1 h-3 w-3" />
-                              PrintPurchase Order
+                              พิมพ์ใบสั่งซื้อ
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -1376,21 +1376,21 @@ export function StockPage() {
             <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <Label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Search
+                  ค้นหา
                 </Label>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     value={pendingSearch}
                     onChange={(e) => setPendingSearch(e.target.value)}
-                    placeholder="No.atRequest / CodeProduct / Name / No.Work Order"
+                    placeholder="เลขที่คำขอ / รหัสสินค้า / ชื่อ / เลขที่ใบงาน"
                     className="pl-8"
                   />
                 </div>
               </div>
               <div className="w-full sm:w-56">
                 <Label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Status
+                  สถานะ
                 </Label>
                 <Select
                   value={pendingFilter}
@@ -1404,10 +1404,10 @@ export function StockPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PENDING">PendingApprove</SelectItem>
-                    <SelectItem value="APPROVED">Approve</SelectItem>
-                    <SelectItem value="REJECTED">Reject</SelectItem>
-                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="PENDING">รอการอนุมัติ</SelectItem>
+                    <SelectItem value="APPROVED">อนุมัติแล้ว</SelectItem>
+                    <SelectItem value="REJECTED">ปฏิเสธ</SelectItem>
+                    <SelectItem value="all">ทั้งหมด</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1420,7 +1420,7 @@ export function StockPage() {
                 className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                Refresh
+                รีเฟรช
               </Button>
             </CardContent>
           </Card>
@@ -1431,15 +1431,15 @@ export function StockPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-slate-50 dark:bg-slate-800/60">
-                      <TableHead className="w-32">No.atRequest</TableHead>
-                      <TableHead className="w-32">Date</TableHead>
-                      <TableHead>Product</TableHead>
+                      <TableHead className="w-32">เลขที่คำขอ</TableHead>
+                      <TableHead className="w-32">วันที่</TableHead>
+                      <TableHead>สินค้า</TableHead>
                       <TableHead className="w-24 text-right">{t('common.quantity')}</TableHead>
-                      <TableHead className="w-28 text-right">Remaining</TableHead>
-                      <TableHead className="w-32">No.Work Order</TableHead>
-                      <TableHead>causeResult / Remark</TableHead>
-                      <TableHead className="w-28">Status</TableHead>
-                      <TableHead className="w-40 text-right">Actions</TableHead>
+                      <TableHead className="w-28 text-right">คงเหลือ</TableHead>
+                      <TableHead className="w-32">เลขที่ใบงาน</TableHead>
+                      <TableHead>เหตุผล / หมายเหตุ</TableHead>
+                      <TableHead className="w-28">สถานะ</TableHead>
+                      <TableHead className="w-40 text-right">การดำเนินการ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1461,14 +1461,14 @@ export function StockPage() {
                         >
                           <Hourglass className="mx-auto mb-2 h-10 w-10 opacity-30" />
                           <div className="text-sm">
-                            Not foundRequestStock Out
+                            ไม่พบคำขอเบิกออก
                             {pendingFilter !== 'all'
-                              ? ` atHasStatus "${
+                              ? ` ที่มีสถานะ "${
                                   pendingFilter === 'PENDING'
-                                    ? 'PendingApprove'
+                                    ? 'รอการอนุมัติ'
                                     : pendingFilter === 'APPROVED'
-                                    ? 'Approve'
-                                    : 'Reject'
+                                    ? 'อนุมัติแล้ว'
+                                    : 'ปฏิเสธ'
                                 }"`
                               : ''}
                           </div>
@@ -1498,7 +1498,7 @@ export function StockPage() {
                                 {t.productCode ?? '—'}
                                 {t.requester && (
                                   <span className="ml-1.5 text-slate-400">
-                                    • PersonWithdraw: {t.requester}
+                                    • ผู้เบิก: {t.requester}
                                   </span>
                                 )}
                               </div>
@@ -1516,7 +1516,7 @@ export function StockPage() {
                               {stockQty !== undefined ? stockQty : '—'}
                               {insufficient && (
                                 <div className="text-[10px] font-normal text-rose-500">
-                                  Nosufficient
+                                  ไม่เพียงพอ
                                 </div>
                               )}
                             </TableCell>
@@ -1538,17 +1538,17 @@ export function StockPage() {
                               </div>
                               {t.purpose && (
                                 <div className="text-[10px] text-slate-400">
-                                  for: {t.purpose}
+                                  เพื่อ: {t.purpose}
                                 </div>
                               )}
                               {t.rejectReason && (
                                 <div className="text-[10px] text-rose-500">
-                                  Reject: {t.rejectReason}
+                                  ปฏิเสธ: {t.rejectReason}
                                 </div>
                               )}
                               {t.approver && (
                                 <div className="text-[10px] text-slate-400">
-                                  by: {t.approver}
+                                  โดย: {t.approver}
                                 </div>
                               )}
                             </TableCell>
@@ -1564,7 +1564,7 @@ export function StockPage() {
                                     disabled={
                                       approving && approvingTxn?.id === t.id
                                     }
-                                    title="Approve"
+                                    title="อนุมัติ"
                                   >
                                     {approving && approvingTxn?.id === t.id ? (
                                       <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1580,7 +1580,7 @@ export function StockPage() {
                                       setRejectingTxn(t)
                                       setRejectReason('')
                                     }}
-                                    title="Reject"
+                                    title="ปฏิเสธ"
                                   >
                                     <XCircle className="h-3.5 w-3.5" />
                                   </Button>
@@ -1608,43 +1608,43 @@ export function StockPage() {
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="text-slate-800 dark:text-slate-100">
-              {itemForm.id ? '✏️ EditProduct' : '➕ AddProductNew'}
+              {itemForm.id ? '✏️ แก้ไขสินค้า' : '➕ เพิ่มสินค้าใหม่'}
             </DialogTitle>
             <DialogDescription>
               {itemForm.id
-                ? `EditDataProduct ${itemForm.productCode}`
-                : 'CodeProductwillcorrectCreateAutoinimageType STK-NNNN IfUnspecified'}
+                ? `แก้ไขข้อมูลสินค้า ${itemForm.productCode}`
+                : 'รหัสสินค้าจะถูกสร้างอัตโนมัติในรูปแบบ STK-NNNN หากไม่ระบุ'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                CodeProduct
+                รหัสสินค้า
               </Label>
               <Input
                 value={itemForm.productCode}
                 onChange={(e) =>
                   setItemForm({ ...itemForm, productCode: e.target.value })
                 }
-                placeholder="STK-0001 (leave blankforCreateAuto)"
+                placeholder="STK-0001 (เว้นว่างเพื่อสร้างอัตโนมัติ)"
               />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                NameProduct *
+                ชื่อสินค้า *
               </Label>
               <Input
                 value={itemForm.productName}
                 onChange={(e) =>
                   setItemForm({ ...itemForm, productName: e.target.value })
                 }
-                placeholder="e.g. InkPrint EPSON T544"
+                placeholder="เช่น หมึกพิมพ์ EPSON T544"
               />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Category
+                หมวดหมู่
               </Label>
               <Select
                 value={itemForm.category}
@@ -1653,10 +1653,10 @@ export function StockPage() {
                 }
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="SelectCategory" />
+                  <SelectValue placeholder="เลือกหมวดหมู่" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none">— Unspecified —</SelectItem>
+                  <SelectItem value="__none">— ไม่ระบุ —</SelectItem>
                   {CATEGORIES.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
@@ -1667,7 +1667,7 @@ export function StockPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Unit
+                หน่วย
               </Label>
               <Select
                 value={itemForm.unit}
@@ -1687,19 +1687,19 @@ export function StockPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Brand
+                ยี่ห้อ
               </Label>
               <Input
                 value={itemForm.brand}
                 onChange={(e) =>
                   setItemForm({ ...itemForm, brand: e.target.value })
                 }
-                placeholder="e.g. EPSON, HP"
+                placeholder="เช่น EPSON, HP"
               />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Model
+                รุ่น
               </Label>
               <Input
                 value={itemForm.model}
@@ -1710,7 +1710,7 @@ export function StockPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                QuantityRemaining
+                จำนวนคงเหลือ
               </Label>
               <Input
                 type="number"
@@ -1723,7 +1723,7 @@ export function StockPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                reorder point (stepLow)
+                จุดสั่งซื้อ (ขั้นต่ำ)
               </Label>
               <Input
                 type="number"
@@ -1736,7 +1736,7 @@ export function StockPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                QuantityHighEnd
+                จำนวนสูงสุด
               </Label>
               <Input
                 type="number"
@@ -1749,7 +1749,7 @@ export function StockPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                PriceperUnit (THB)
+                ราคาต่อหน่วย (บาท)
               </Label>
               <Input
                 type="number"
@@ -1762,7 +1762,7 @@ export function StockPage() {
                 placeholder="0.00"
               />
               <p className="text-[10px] text-slate-400">
-                UseFor cost model = &quot;PriceperUnit (remainat)&quot;
+                ใช้สำหรับโมเดลค่าใช้จ่ายแบบ &quot;ราคาต่อหน่วยคงที่&quot;
               </p>
             </div>
 
@@ -1770,28 +1770,28 @@ export function StockPage() {
             <div className="col-span-2 rounded-lg border border-purple-200 bg-purple-50/40 p-3 dark:border-purple-800 dark:bg-purple-950/20">
               <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300">
                 <Coins className="h-3.5 w-3.5" />
-                imageTypethinkFeeUsepay (Cost Model)
+                รูปแบบการคิดค่าใช้จ่าย (Cost Model)
               </div>
               <div className="space-y-2">
                 <div>
-                  <Label className="text-[10px] text-slate-500">SelectimageTypethinkFeeUsepay</Label>
+                  <Label className="text-[10px] text-slate-500">เลือกรูปแบบการคิดค่าใช้จ่าย</Label>
                   <select
                     className="mt-0.5 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900"
                     value={itemForm.costModel}
                     onChange={(e) => setItemForm({ ...itemForm, costModel: e.target.value })}
                   >
-                    <option value="fixed">PriceperUnit (remainat) — e.g. CartridgeInk, Parts</option>
-                    <option value="per-page">PriceperfrontPrint — e.g. leasePrint</option>
-                    <option value="per-hour">Priceperhr — e.g. Devicerentitemhr</option>
-                    <option value="monthly">Comeitemmonths — e.g. Feemaintenanceitemmonths</option>
-                    <option value="per-device">Priceperunits — e.g. Feeservice perunits</option>
+                    <option value="fixed">ราคาต่อหน่วยคงที่ — เช่น ตลับหมึก, อะไหล่</option>
+                    <option value="per-page">ราคาต่อหน้าพิมพ์ — เช่น เครื่องพิมพ์เช่า</option>
+                    <option value="per-hour">ราคาต่อชั่วโมง — เช่น อุปกรณ์เช่ารายชั่วโมง</option>
+                    <option value="monthly">รายเดือน — เช่น ค่าบำรุงรักษารายเดือน</option>
+                    <option value="per-device">ราคาต่อเครื่อง — เช่น ค่าบริการต่อเครื่อง</option>
                   </select>
                 </div>
 
                 {/* Conditional rate inputs based on costModel */}
                 {itemForm.costModel === 'per-page' && (
                   <div>
-                    <Label className="text-[10px] text-slate-500">rateFeeservice perfront (THB)</Label>
+                    <Label className="text-[10px] text-slate-500">อัตราค่าบริการต่อหน้า (บาท)</Label>
                     <Input type="number" min="0" step="0.01" value={itemForm.ratePerPage}
                       onChange={(e) => setItemForm({ ...itemForm, ratePerPage: e.target.value })}
                       placeholder="0.50" className="h-8 text-xs" />
@@ -1799,7 +1799,7 @@ export function StockPage() {
                 )}
                 {itemForm.costModel === 'per-hour' && (
                   <div>
-                    <Label className="text-[10px] text-slate-500">rateFeeservice perhr (THB)</Label>
+                    <Label className="text-[10px] text-slate-500">อัตราค่าบริการต่อชั่วโมง (บาท)</Label>
                     <Input type="number" min="0" step="0.01" value={itemForm.ratePerHour}
                       onChange={(e) => setItemForm({ ...itemForm, ratePerHour: e.target.value })}
                       placeholder="100.00" className="h-8 text-xs" />
@@ -1807,7 +1807,7 @@ export function StockPage() {
                 )}
                 {itemForm.costModel === 'monthly' && (
                   <div>
-                    <Label className="text-[10px] text-slate-500">FeeComeitemmonths (THB)</Label>
+                    <Label className="text-[10px] text-slate-500">ค่าบริการรายเดือน (บาท)</Label>
                     <Input type="number" min="0" step="0.01" value={itemForm.ratePerMonth}
                       onChange={(e) => setItemForm({ ...itemForm, ratePerMonth: e.target.value })}
                       placeholder="1500.00" className="h-8 text-xs" />
@@ -1815,7 +1815,7 @@ export function StockPage() {
                 )}
                 {itemForm.costModel === 'per-device' && (
                   <div>
-                    <Label className="text-[10px] text-slate-500">Feeservice perunits (THB)</Label>
+                    <Label className="text-[10px] text-slate-500">ค่าบริการต่อเครื่อง (บาท)</Label>
                     <Input type="number" min="0" step="0.01" value={itemForm.ratePerDevice}
                       onChange={(e) => setItemForm({ ...itemForm, ratePerDevice: e.target.value })}
                       placeholder="200.00" className="h-8 text-xs" />
@@ -1826,63 +1826,63 @@ export function StockPage() {
               {/* Expected usage defaults — used by parts picker */}
               <div className="mt-3 border-t border-purple-200 pt-2 dark:border-purple-800">
                 <div className="mb-1.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
-                  specActive (FillAutoinfrontWithdrawParts)
+                  สเปคการใช้งาน (กรอกอัตโนมัติเมื่อเบิกอะไหล่)
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <Label className="text-[10px] text-slate-500">1 UnitFill?units</Label>
+                    <Label className="text-[10px] text-slate-500">1 หน่วยเติมได้กี่เครื่อง</Label>
                     <Input type="number" min="0" value={itemForm.expectedDevicesPerUnit}
                       onChange={(e) => setItemForm({ ...itemForm, expectedDevicesPerUnit: e.target.value })}
                       placeholder="3" className="h-8 text-xs" />
-                    <p className="text-[9px] text-slate-400">e.g. Inkwater 1 bottles Fill 3 units</p>
+                    <p className="text-[9px] text-slate-400">เช่น น้ำหมึก 1 ขวด เติมได้ 3 เครื่อง</p>
                   </div>
                   <div>
-                    <Label className="text-[10px] text-slate-500">1 UnitUse?hr.</Label>
+                    <Label className="text-[10px] text-slate-500">1 หน่วยใช้ได้กี่ชม.</Label>
                     <Input type="number" min="0" value={itemForm.expectedHoursPerUnit}
                       onChange={(e) => setItemForm({ ...itemForm, expectedHoursPerUnit: e.target.value })}
                       placeholder="8" className="h-8 text-xs" />
-                    <p className="text-[9px] text-slate-400">e.g. battery 8 hr.</p>
+                    <p className="text-[9px] text-slate-400">เช่น แบตเตอรี่ 8 ชม.</p>
                   </div>
                   <div>
-                    <Label className="text-[10px] text-slate-500">1 UnitPrint?front (Yield)</Label>
+                    <Label className="text-[10px] text-slate-500">1 หน่วยพิมพ์ได้กี่หน้า (Yield)</Label>
                     <Input type="number" min="0" value={itemForm.expectedPagesPerUnit}
                       onChange={(e) => setItemForm({ ...itemForm, expectedPagesPerUnit: e.target.value })}
                       placeholder="6000" className="h-8 text-xs" />
-                    <p className="text-[9px] text-slate-400">e.g. Ink 6,000 sheets / drum 15,000 sheets</p>
+                    <p className="text-[9px] text-slate-400">เช่น หมึก 6,000 แผ่น / ดรัม 15,000 แผ่น</p>
                   </div>
                 </div>
                 <p className="mt-2 text-[9px] italic text-slate-400">
-                  💡 unitLikespecStandard: Ink EPSON T544 = 6,000 sheets/bottles · drum OKI = 15,000 sheets/Cartridge · CartridgeInk HP 85A = 1,600 sheets
+                  💡 หน่วยตามสเปคมาตรฐาน: หมึก EPSON T544 = 6,000 แผ่น/ขวด · ดรัม OKI = 15,000 แผ่น/ตลับ · ตลับหมึก HP 85A = 1,600 แผ่น
                 </p>
               </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                LocationStore
+                ตำแหน่งจัดเก็บ
               </Label>
               <Input
                 value={itemForm.location}
                 onChange={(e) =>
                   setItemForm({ ...itemForm, location: e.target.value })
                 }
-                placeholder="e.g. Floor A-1"
+                placeholder="เช่น ชั้น A-1"
               />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Site
+                ไซต์
               </Label>
               <Input
                 value={itemForm.site}
                 onChange={(e) =>
                   setItemForm({ ...itemForm, site: e.target.value })
                 }
-                placeholder="e.g. HQ"
+                placeholder="เช่น HQ"
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                DeviceatPendingReceive
+                อุปกรณ์ที่รองรับ
               </Label>
               <Input
                 value={itemForm.compatibleDevices}
@@ -1892,12 +1892,12 @@ export function StockPage() {
                     compatibleDevices: e.target.value,
                   })
                 }
-                placeholder="e.g. EPSON L5290, L3210 (คั่withmicroPart)"
+                placeholder="เช่น EPSON L5290, L3210 (คั่ด้วยจุลภาค)"
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Remark
+                หมายเหตุ
               </Label>
               <Textarea
                 value={itemForm.remark}
@@ -1915,14 +1915,14 @@ export function StockPage() {
               onClick={() => setItemDialogOpen(false)}
               disabled={savingItem}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button
               onClick={saveItem}
               disabled={savingItem}
               className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {savingItem ? 'Save...' : t('common.save')}
+              {savingItem ? 'กำลังบันทึก...' : t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1936,19 +1936,19 @@ export function StockPage() {
               {txnForm.type === 'IN' && (
                 <>
                   <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
-                  ReceiveProductin
+                  รับสินค้าเข้า
                 </>
               )}
               {txnForm.type === 'OUT' && (
                 <>
                   <ArrowUpFromLine className="h-4 w-4 text-rose-600" />
-                  WithdrawProductout
+                  เบิกสินค้าออก
                 </>
               )}
               {txnForm.type === 'ADJUST' && (
                 <>
                   <SlidersHorizontal className="h-4 w-4 text-amber-600" />
-                  UpdateStock
+                  ปรับสต๊อก
                 </>
               )}
             </DialogTitle>
@@ -1957,7 +1957,7 @@ export function StockPage() {
                 <span>
                   {txnTarget.productCode} — {txnTarget.productName}
                   <br />
-                  RemainingCurrent: {txnTarget.quantity} {txnTarget.unit}
+                  คงเหลือปัจจุบัน: {txnTarget.quantity} {txnTarget.unit}
                 </span>
               )}
             </DialogDescription>
@@ -1967,8 +1967,8 @@ export function StockPage() {
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                 {txnForm.type === 'ADJUST'
-                  ? 'QuantityRemainingNew (SetNew)'
-                  : 'Quantity *'}
+                  ? 'จำนวนคงเหลือใหม่ (ตั้งค่าใหม่)'
+                  : 'จำนวน *'}
               </Label>
               <Input
                 type="number"
@@ -1981,14 +1981,14 @@ export function StockPage() {
               />
               {txnForm.type === 'OUT' && txnTarget && (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  QuantityatWithdrawHighEnd: {txnTarget.quantity} {txnTarget.unit}
+                  จำนวนสูงสุดที่เบิกได้: {txnTarget.quantity} {txnTarget.unit}
                 </p>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  DateDoitem
+                  วันที่ทำรายการ
                 </Label>
                 <Input
                   type="date"
@@ -2000,7 +2000,7 @@ export function StockPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  causeResult
+                  เหตุผล
                 </Label>
                 <Input
                   value={txnForm.reason}
@@ -2009,10 +2009,10 @@ export function StockPage() {
                   }
                   placeholder={
                     txnForm.type === 'IN'
-                      ? 'buy / movein'
+                      ? 'ซื้อ / ย้ายเข้า'
                       : txnForm.type === 'OUT'
-                      ? 'WithdrawUse / moveout / Color'
-                      : 'Stock Count / ReceiveAmount'
+                      ? 'เบิกใช้ / ย้ายออก / จ่ายแจก'
+                      : 'ตรวจนับสต๊อก / ปรับยอด'
                   }
                 />
               </div>
@@ -2021,7 +2021,7 @@ export function StockPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                    buyfrom (Supplier)
+                    ซื้อจาก (ผู้จัดจำหน่าย)
                   </Label>
                   <Input
                     value={txnForm.vendor}
@@ -2032,7 +2032,7 @@ export function StockPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                    ValueTotal (THB)
+                    มูลค่ารวม (บาท)
                   </Label>
                   <Input
                     type="number"
@@ -2066,7 +2066,7 @@ export function StockPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Remark
+                  หมายเหตุ
                 </Label>
                 <Input
                   value={txnForm.remark}
@@ -2084,7 +2084,7 @@ export function StockPage() {
               onClick={() => setTxnDialogOpen(false)}
               disabled={savingTxn}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button
               onClick={saveTxn}
@@ -2097,7 +2097,7 @@ export function StockPage() {
                   : 'bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950'
               }
             >
-              {savingTxn ? 'Save...' : t('common.confirm')}
+              {savingTxn ? 'กำลังบันทึก...' : t('common.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2109,7 +2109,7 @@ export function StockPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <Eye className="h-4 w-4 text-slate-500" />
-              DetailsProduct
+              รายละเอียดสินค้า
             </DialogTitle>
             <DialogDescription>
               {detailData && (
@@ -2129,45 +2129,45 @@ export function StockPage() {
             <div className="space-y-4">
               {/* Item info grid */}
               <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50 sm:grid-cols-3">
-                <DetailField label="CodeProduct" value={detailData.productCode} mono />
-                <DetailField label="Category" value={detailData.category} />
-                <DetailField label="Brand" value={detailData.brand} />
-                <DetailField label="Model" value={detailData.model} />
+                <DetailField label="รหัสสินค้า" value={detailData.productCode} mono />
+                <DetailField label="หมวดหมู่" value={detailData.category} />
+                <DetailField label="ยี่ห้อ" value={detailData.brand} />
+                <DetailField label="รุ่น" value={detailData.model} />
                 <DetailField
-                  label="Remaining"
+                  label="คงเหลือ"
                   value={`${detailData.quantity} ${detailData.unit}`}
                   highlight={detailData.quantity <= detailData.minQuantity}
                 />
                 <DetailField
-                  label="reorder point"
+                  label="จุดสั่งซื้อ"
                   value={`${detailData.minQuantity} ${detailData.unit}`}
                 />
                 <DetailField
-                  label="Price/Unit"
+                  label="ราคา/หน่วย"
                   value={formatBaht(detailData.unitCost, lang)}
                 />
                 <DetailField
-                  label="ValueTotal"
+                  label="มูลค่ารวม"
                   value={formatBaht(
                     (detailData.unitCost ?? 0) * detailData.quantity,
                     lang,
                   )}
                 />
-                <DetailField label="LocationStore" value={detailData.location} />
-                <DetailField label="Site" value={detailData.site} />
+                <DetailField label="ตำแหน่งจัดเก็บ" value={detailData.location} />
+                <DetailField label="ไซต์" value={detailData.site} />
                 <DetailField
-                  label="DeviceatPendingReceive"
+                  label="อุปกรณ์ที่รองรับ"
                   value={detailData.compatibleDevices}
                   span={2}
                 />
                 <DetailField
-                  label="Remark"
+                  label="หมายเหตุ"
                   value={detailData.remark}
                   span={2}
                 />
                 <DetailField
-                  label="Status"
-                  value={detailData.active ? t('status.active') : 'CloseActive'}
+                  label="สถานะ"
+                  value={detailData.active ? t('status.active') : 'ปิดใช้งาน'}
                 />
               </div>
 
@@ -2176,7 +2176,7 @@ export function StockPage() {
                 <div>
                   <div className="mb-1 flex items-center justify-between text-xs">
                     <span className="text-slate-600 dark:text-slate-300">
-                      levelStock
+                      ระดับสต๊อก
                     </span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">
                       {detailData.quantity} / {detailData.maxQuantity}{' '}
@@ -2197,7 +2197,7 @@ export function StockPage() {
               <div>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    HistoryStock In/Stock Out
+                    ประวัติรับเข้า/เบิกออกสต๊อก
                   </h3>
                   <div className="flex items-center gap-2">
                     {detailData.transactions.length > 0 && (
@@ -2207,23 +2207,23 @@ export function StockPage() {
                         onClick={() => {
                           const rows: (string | number | null | undefined)[][] = [
                             [
-                              'No.at',
+                              'เลขที่',
                               t('common.type'),
-                              'CodeProduct',
-                              'NameProduct',
+                              'รหัสสินค้า',
+                              'ชื่อสินค้า',
                               t('common.quantity'),
                               t('common.unit'),
-                              'Remaining',
-                              'Price/Unit',
-                              'ValueTotal',
-                              'Supplier/PersonWithdraw',
-                              'Dept',
-                              'Objective/causeResult',
-                              'PersonApprove',
-                              'Purchase Order',
+                              'คงเหลือ',
+                              'ราคา/หน่วย',
+                              'มูลค่ารวม',
+                              'ผู้จัดจำหน่าย/ผู้เบิก',
+                              'แผนก',
+                              'วัตถุประสงค์/เหตุผล',
+                              'ผู้อนุมัติ',
+                              'ใบสั่งซื้อ',
                               t('jobtype.work-order'),
                               t('common.date'),
-                              'blackhillby',
+                              'ดำเนินการโดย',
                               t('common.remark'),
                             ],
                           ]
@@ -2251,17 +2251,17 @@ export function StockPage() {
                           }
                           const fname = `stock-transactions-${detailData.productCode || detailData.id}-${new Date().toISOString().slice(0, 10)}.csv`
                           downloadCSV(fname, rows)
-                          toast.success(`Export ${detailData.transactions.length} itemas CSV `)
+                          toast.success(`ส่งออก ${detailData.transactions.length} รายการเป็น CSV แล้ว`)
                         }}
                         className="h-7 border-slate-300 px-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                        title="ExporttransactionAllas CSV"
+                        title="ส่งออกรายการทั้งหมดเป็น CSV"
                       >
                         <FileDown className="mr-1 h-3 w-3" />
-                        Export CSV
+                        ส่งออก CSV
                       </Button>
                     )}
                     <Badge variant="outline" className="text-xs">
-                      {detailData.transactions.length} item
+                      {detailData.transactions.length} รายการ
                     </Badge>
                   </div>
                 </div>
@@ -2274,13 +2274,13 @@ export function StockPage() {
                     <Table>
                       <TableHeader className="sticky top-0 bg-slate-50 dark:bg-slate-800/80">
                         <TableRow>
-                          <TableHead className="w-28">No.at</TableHead>
-                          <TableHead className="w-20">Type</TableHead>
+                          <TableHead className="w-28">เลขที่</TableHead>
+                          <TableHead className="w-20">ประเภท</TableHead>
                           <TableHead className="w-24 text-right">{t('common.quantity')}</TableHead>
-                          <TableHead className="w-24 text-right">Remaining</TableHead>
-                          <TableHead>causeResult</TableHead>
-                          <TableHead className="w-28">Date</TableHead>
-                          <TableHead className="w-16 text-right">Print</TableHead>
+                          <TableHead className="w-24 text-right">คงเหลือ</TableHead>
+                          <TableHead>เหตุผล</TableHead>
+                          <TableHead className="w-28">วันที่</TableHead>
+                          <TableHead className="w-16 text-right">พิมพ์</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -2304,7 +2304,7 @@ export function StockPage() {
                               {t.reason ?? '—'}
                               {t.vendor && (
                                 <div className="text-[10px] text-slate-400">
-                                  from: {t.vendor}
+                                  จาก: {t.vendor}
                                 </div>
                               )}
                             </TableCell>
@@ -2322,10 +2322,10 @@ export function StockPage() {
                                       `/api/stock-items/${detailData.id}/print?txnId=${t.id}&type=in`,
                                     )
                                   }
-                                  title="PrintticketReceiveProduct"
+                                  title="พิมพ์ใบรับของ"
                                 >
                                   <Printer className="mr-1 h-3 w-3" />
-                                  ticketReceive
+                                  ใบรับของ
                                 </Button>
                               ) : t.type === 'OUT' ? (
                                 <Button
@@ -2337,10 +2337,10 @@ export function StockPage() {
                                       `/api/stock-items/${detailData.id}/print?txnId=${t.id}&type=out`,
                                     )
                                   }
-                                  title="PrintticketWithdrawProduct"
+                                  title="พิมพ์ใบเบิกของ"
                                 >
                                   <Printer className="mr-1 h-3 w-3" />
-                                  ticketWithdraw
+                                  ใบเบิกของ
                                 </Button>
                               ) : (
                                 <Button
@@ -2352,10 +2352,10 @@ export function StockPage() {
                                       `/api/stock-items/${detailData.id}/print?txnId=${t.id}`,
                                     )
                                   }
-                                  title="PrintticketUpdateStock"
+                                  title="พิมพ์ใบปรับสต๊อก"
                                 >
                                   <Printer className="mr-1 h-3 w-3" />
-                                  ticketReceive
+                                  ใบปรับสต๊อก
                                 </Button>
                               )}
                             </TableCell>
@@ -2380,7 +2380,7 @@ export function StockPage() {
                   className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                 >
                   <ArrowDownToLine className="mr-1.5 h-3.5 w-3.5" />
-                  Stock In
+                  รับเข้า
                 </Button>
                 <Button
                   size="sm"
@@ -2394,7 +2394,7 @@ export function StockPage() {
                   className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40"
                 >
                   <ArrowUpFromLine className="mr-1.5 h-3.5 w-3.5" />
-                  Stock Out
+                  เบิกออก
                 </Button>
                 <Button
                   size="sm"
@@ -2407,7 +2407,7 @@ export function StockPage() {
                   className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/40"
                 >
                   <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
-                  Update
+                  ปรับสต๊อก
                 </Button>
                 <Button
                   size="sm"
@@ -2420,7 +2420,7 @@ export function StockPage() {
                   className="ml-auto border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                  Edit
+                  แก้ไข
                 </Button>
               </div>
             </div>
@@ -2434,18 +2434,18 @@ export function StockPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
               <Trash2 className="h-4 w-4" />
-              ConfirmDeleteProduct
+              ยืนยันการลบสินค้า
             </DialogTitle>
             <DialogDescription>
               {deleteTarget && (
                 <span>
-                  youwillDelete{' '}
+                  คุณกำลังจะลบ{' '}
                   <strong className="text-slate-700 dark:text-slate-200">
                     {deleteTarget.productCode} — {deleteTarget.productName}
                   </strong>
                   <br />
-                  SystemwillSettingsStatusas &quot;CloseActive&quot; (soft delete)
-                  forkeepHistoryStock In/Stock OutKeep
+                  ระบบจะตั้งสถานะเป็น &quot;ปิดใช้งาน&quot; (soft delete)
+                  เพื่อเก็บประวัติรับเข้า/เบิกออกไว้
                 </span>
               )}
             </DialogDescription>
@@ -2456,14 +2456,14 @@ export function StockPage() {
               onClick={() => setDeleteTarget(null)}
               disabled={deleting}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button
               onClick={confirmDelete}
               disabled={deleting}
               className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {deleting ? 'Delete...' : 'DeleteProduct'}
+              {deleting ? 'กำลังลบ...' : 'ลบสินค้า'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2475,10 +2475,10 @@ export function StockPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <ShoppingCart className="h-4 w-4 text-teal-600" />
-              CreatePurchase Order
+              สร้างใบสั่งซื้อ
             </DialogTitle>
             <DialogDescription>
-              No.atPurchase OrderwillcorrectCreateAutoinimageType PO-YYYYMMDD-NNN
+              เลขที่ใบสั่งซื้อจะถูกสร้างอัตโนมัติในรูปแบบ PO-YYYYMMDD-NNN
             </DialogDescription>
           </DialogHeader>
 
@@ -2486,7 +2486,7 @@ export function StockPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Dateorder *
+                  วันที่สั่งซื้อ *
                 </Label>
                 <Input
                   type="date"
@@ -2498,14 +2498,14 @@ export function StockPage() {
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Supplier
+                  ผู้จัดจำหน่าย
                 </Label>
                 <Input
                   value={poForm.supplier}
                   onChange={(e) =>
                     setPoForm({ ...poForm, supplier: e.target.value })
                   }
-                  placeholder="Namecompany/shop"
+                  placeholder="ชื่อบริษัท/ร้านค้า"
                 />
               </div>
             </div>
@@ -2514,7 +2514,7 @@ export function StockPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  itemProduct
+                  รายการสินค้า
                 </Label>
                 <Button
                   size="sm"
@@ -2523,7 +2523,7 @@ export function StockPage() {
                   className="h-7 border-teal-300 px-2 text-xs text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-300 dark:hover:bg-teal-950/40"
                 >
                   <Plus className="mr-1 h-3 w-3" />
-                  Additem
+                  เพิ่มรายการ
                 </Button>
               </div>
               <div className="space-y-2">
@@ -2547,7 +2547,7 @@ export function StockPage() {
                           }
                         >
                           <SelectTrigger className="h-8 w-full text-xs">
-                            <SelectValue placeholder="SelectProduct" />
+                            <SelectValue placeholder="เลือกสินค้า" />
                           </SelectTrigger>
                           <SelectContent>
                             {stockItems.map((it) => (
@@ -2580,7 +2580,7 @@ export function StockPage() {
                             updatePoLine(idx, 'unitPrice', e.target.value)
                           }
                           className="h-8 text-xs"
-                          placeholder="Price/Unit"
+                          placeholder="ราคา/หน่วย"
                         />
                       </div>
                       <div className="col-span-3 sm:col-span-2 flex items-center text-right text-xs font-medium text-slate-700 dark:text-slate-200">
@@ -2611,7 +2611,7 @@ export function StockPage() {
                 return (
                   <div className="flex justify-end gap-2 border-t border-slate-200 pt-2 text-sm dark:border-slate-700">
                     <span className="text-slate-500 dark:text-slate-400">
-                      ValueTotalall:
+                      มูลค่ารวมทั้งหมด:
                     </span>
                     <span className="font-bold text-slate-800 dark:text-slate-100">
                       {formatBaht(grand, lang)}
@@ -2623,7 +2623,7 @@ export function StockPage() {
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Remark
+                หมายเหตุ
               </Label>
               <Textarea
                 value={poForm.remark}
@@ -2631,7 +2631,7 @@ export function StockPage() {
                   setPoForm({ ...poForm, remark: e.target.value })
                 }
                 rows={2}
-                placeholder="e.g. orderforFillStockmonths..."
+                placeholder="เช่น สั่งเพื่อเติมสต๊อกประจำเดือน..."
               />
             </div>
           </div>
@@ -2642,14 +2642,14 @@ export function StockPage() {
               onClick={() => setPoDialogOpen(false)}
               disabled={savingPo}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button
               onClick={savePo}
               disabled={savingPo}
               className="bg-teal-600 text-white hover:bg-teal-700 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {savingPo ? 'Save...' : 'CreatePurchase Order'}
+              {savingPo ? 'กำลังบันทึก...' : 'สร้างใบสั่งซื้อ'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2669,37 +2669,37 @@ export function StockPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
               <XCircle className="h-4 w-4" />
-              RejectRequestStock Out
+              ปฏิเสธคำขอเบิกออก
             </DialogTitle>
             <DialogDescription>
               {rejectingTxn && (
                 <span>
-                  youwillRejectRequestStock Out{' '}
+                  คุณกำลังจะปฏิเสธคำขอเบิกออก{' '}
                   <strong className="text-slate-700 dark:text-slate-200">
                     {rejectingTxn.productCode ?? '—'} — {rejectingTxn.productName ?? rejectingTxn.stockItem?.productName ?? ''}
                   </strong>
                   <br />
-                  Quantity {rejectingTxn.quantity} {rejectingTxn.unit ?? ''}
+                  จำนวน {rejectingTxn.quantity} {rejectingTxn.unit ?? ''}
                   {rejectingTxn.workOrderNo && (
                     <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                      No.Work OrderatNamelink: {rejectingTxn.workOrderNo}
+                      เลขที่ใบงานที่เชื่อมโยง: {rejectingTxn.workOrderNo}
                     </span>
                   )}
                   <br />
-                  SystemwillNoReduceQuantityStock — PersonWithdrawMustCreateRequestNewIfMust
+                  ระบบจะไม่ตัดจำนวนสต๊อก — ผู้เบิกต้องสร้างคำขอใหม่หากต้องการ
                 </span>
               )}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-              causeResultatReject <span className="text-rose-500">*</span>
+              เหตุผลในการปฏิเสธ <span className="text-rose-500">*</span>
             </Label>
             <Textarea
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               rows={3}
-              placeholder="e.g. SpecifycauseResultinReject, Quantitymore thanatApprove, NoYesWorkatReceivewronglike..."
+              placeholder="เช่น ระบุเหตุผลที่ปฏิเสธ, จำนวนเกินกว่าที่อนุมัติได้, ไม่ใช่งานที่รับผิดชอบ..."
               autoFocus
             />
           </div>
@@ -2712,14 +2712,14 @@ export function StockPage() {
               }}
               disabled={rejecting}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button
               onClick={handleRejectPending}
               disabled={rejecting || !rejectReason.trim()}
               className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {rejecting ? 'Save...' : 'RejectRequest'}
+              {rejecting ? 'กำลังบันทึก...' : 'ปฏิเสธคำขอ'}
             </Button>
           </DialogFooter>
         </DialogContent>

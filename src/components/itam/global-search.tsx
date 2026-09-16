@@ -20,20 +20,56 @@ import {
 } from '@/components/ui/command'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  Search,
   Package,
   Database,
   Gauge,
   History,
   Building2,
+  Boxes,
   ArrowRight,
+  LayoutDashboard,
+  Monitor,
+  TrendingUp,
+  Wrench,
+  CalendarClock,
+  FileText,
+  Smartphone,
+  Download,
+  BarChart3,
+  Coins,
+  Settings,
+  ScrollText,
 } from 'lucide-react'
-import { useAppStore } from '@/store/app-store'
+import { useAppStore, type ActivePage } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 import { useT } from '@/store/i18n-store'
+import { isModuleEnabled, type ModuleName } from '@/config/modules'
 import type { SearchResults } from './types'
 
 const ICON_CLASSES = 'h-4 w-4 shrink-0'
+
+// ── Quick-navigation pages (mirrors the Sidebar nav; filtered by module
+// availability the same way the sidebar is) ──
+const QUICK_PAGES: { page: ActivePage; icon: React.ComponentType<{ className?: string }>; labelKey: string; descKey: string; module?: ModuleName }[] = [
+  { page: 'dashboard', icon: LayoutDashboard, labelKey: 'menu.dashboard', descKey: 'desc.dashboard', module: 'dashboard' },
+  { page: 'itam-devices', icon: Monitor, labelKey: 'menu.devices', descKey: 'desc.devices', module: 'devices' },
+  { page: 'itam-meter-keyboard', icon: TrendingUp, labelKey: 'menu.meter', descKey: 'desc.meter', module: 'meters' },
+  { page: 'itam-work-orders', icon: Wrench, labelKey: 'menu.work_orders', descKey: 'desc.work_orders', module: 'work-orders' },
+  { page: 'pm-schedules', icon: CalendarClock, labelKey: 'menu.pm_schedules', descKey: 'desc.pm_schedules', module: 'work-orders' },
+  { page: 'itam-stock', icon: Boxes, labelKey: 'menu.stock', descKey: 'desc.stock', module: 'stock' },
+  { page: 'itam-paper-analytics', icon: FileText, labelKey: 'menu.paper_analytics', descKey: 'desc.paper_analytics', module: 'paper-analytics' },
+  { page: 'reports-hub', icon: BarChart3, labelKey: 'menu.reports_hub', descKey: 'desc.reports_hub', module: 'reports' },
+  { page: 'material-cost', icon: Coins, labelKey: 'menu.material_cost', descKey: 'desc.material_cost', module: 'reports' },
+  { page: 'monthly-report', icon: CalendarClock, labelKey: 'menu.monthly_report', descKey: 'desc.monthly_report', module: 'reports' },
+  { page: 'templates', icon: FileText, labelKey: 'menu.templates', descKey: 'desc.templates', module: 'templates' },
+  { page: 'import', icon: Download, labelKey: 'menu.import', descKey: 'desc.import', module: 'import' },
+  { page: 'itam-settings', icon: Settings, labelKey: 'menu.settings', descKey: 'desc.settings', module: 'settings' },
+  { page: 'itam-audit', icon: ScrollText, labelKey: 'menu.audit', descKey: 'desc.audit', module: 'audit' },
+  { page: 'mobile', icon: Smartphone, labelKey: 'menu.mobile', descKey: 'desc.mobile', module: 'work-orders' },
+]
+
+const GROUP_HEADING_CLASSES =
+  '[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500'
 
 function SearchResultSkeleton() {
   return (
@@ -89,7 +125,7 @@ export function GlobalSearch() {
     queryKey: ['global-search', debounced],
     queryFn: async () => {
       if (debounced.length < 2) {
-        return { results: { devices: [], master: [], meter: [], audit: [], sites: [] }, total: 0 }
+        return { results: { devices: [], master: [], workOrders: [], stock: [], meter: [], audit: [], sites: [] }, total: 0 }
       }
       const res = await fetch(`/api/search?q=${encodeURIComponent(debounced)}`, {
         headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
@@ -104,13 +140,23 @@ export function GlobalSearch() {
   const results = data?.results ?? {
     devices: [],
     master: [],
+    workOrders: [],
+    stock: [],
     meter: [],
     audit: [],
     sites: [],
   }
   const total = data?.total ?? 0
-  const showLoading = debounced.length >= 2 && isFetching
   const hasQuery = debounced.length >= 2
+  const showLoading = hasQuery && isFetching
+  const hasDataResults =
+    results.devices.length + results.master.length + results.workOrders.length + results.stock.length > 0
+
+  // Pages visible to THIS user (module availability — same gate the sidebar uses)
+  const pages = React.useMemo(
+    () => QUICK_PAGES.filter((p) => !p.module || isModuleEnabled(p.module)),
+    [],
+  )
 
   function handleSelect(type: string, id: string, deviceId?: string) {
     setSearchOpen(false)
@@ -132,8 +178,27 @@ export function GlobalSearch() {
     } else if (type === 'site') {
       setActivePage('settings')
       setPendingSettingsTab('sites')
+    } else if (type === 'workorder') {
+      setActivePage('itam-work-orders')
+    } else if (type === 'stock') {
+      setActivePage('itam-stock')
     }
   }
+
+  function handlePageSelect(page: ActivePage) {
+    setSearchOpen(false)
+    setActivePage(page)
+  }
+
+  // Custom cmdk filter: quick-nav items ("page:" prefix) are matched
+  // client-side against the typed query; server results are already filtered
+  // server-side and always pass.
+  const commandFilter = React.useCallback((value: string, search: string) => {
+    if (!value.startsWith('page:')) return 1
+    const s = search.trim().toLowerCase()
+    if (!s) return 1
+    return value.toLowerCase().includes(s) ? 1 : 0
+  }, [])
 
   return (
     <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
@@ -154,168 +219,256 @@ export function GlobalSearch() {
           >
             <Command
               className="bg-white dark:bg-slate-900"
-              filter={() => 1} // disable built-in filter; we filter on the server
+              filter={commandFilter}
             >
-              <CommandInput
-                placeholder={t('search.placeholder')}
-                value={q}
-                onValueChange={setQ}
-                autoFocus
-              />
+              <div className="relative">
+                <CommandInput
+                  placeholder={t('search.placeholder')}
+                  value={q}
+                  onValueChange={setQ}
+                  autoFocus
+                />
+                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 select-none rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 sm:block dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+                  ESC
+                </kbd>
+              </div>
               <CommandList className="itam-scroll max-h-[60vh]">
-                {!hasQuery ? (
-                  <div className="px-4 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
-                    <Search className="mx-auto mb-2 h-6 w-6 text-slate-300 dark:text-slate-400" />
-                    พิมพ์เพื่อค้นหา...
-                    <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                      ค้นหาในอุปกรณ์ · ข้อมูลมาตรฐาน · การจดมิเตอร์ · ประวัติ · สาขา
-                    </div>
-                  </div>
-                ) : showLoading ? (
-                  <SearchResultSkeleton />
-                ) : total === 0 ? (
+                {/* ── Quick navigation (always available; filtered as you type) ── */}
+                {pages.length > 0 && (
+                  <CommandGroup
+                    heading={t('search.group.pages')}
+                    className={GROUP_HEADING_CLASSES}
+                  >
+                    {pages.map((p) => {
+                      const Icon = p.icon
+                      return (
+                        <CommandItem
+                          key={`p-${p.page}`}
+                          value={`page:${p.page} ${t(p.labelKey)}`}
+                          onSelect={() => handlePageSelect(p.page)}
+                          className="hover:bg-slate-100 dark:hover:bg-slate-800"
+                        >
+                          <Icon className={`${ICON_CLASSES} text-slate-500 dark:text-slate-400`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                              {t(p.labelKey)}
+                            </div>
+                            <div className="truncate text-xs text-slate-400 dark:text-slate-500">
+                              {t(p.descKey)}
+                            </div>
+                          </div>
+                          <ArrowRight className="h-3.5 w-3.5 text-slate-300 dark:text-slate-600" />
+                        </CommandItem>
+                      )
+                    })}
+                  </CommandGroup>
+                )}
+
+                {showLoading && <SearchResultSkeleton />}
+
+                {!showLoading && hasQuery && !hasDataResults && (
                   <CommandEmpty>{t('search.empty')}: &quot;{debounced}&quot;</CommandEmpty>
-                ) : (
-                  <>
-                    {results.devices.length > 0 && (
-                      <CommandGroup
-                        heading={t('search.group.devices')}
-                        className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
-                      >
-                        {results.devices.map((d) => (
-                          <CommandItem
-                            key={`d-${d.id}`}
-                            value={`device ${d.id} ${d.title}`}
-                            onSelect={() => handleSelect('device', d.id)}
-                            className="hover:bg-slate-100 dark:hover:bg-slate-800"
-                          >
-                            <Package className={`${ICON_CLASSES} text-[#f97316]`} />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                                {d.title}
-                              </div>
-                              <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                {d.subtitle}
-                              </div>
-                            </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
+                )}
 
-                    {results.master.length > 0 && (
-                      <CommandGroup
-                        heading={t('search.group.master')}
-                        className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
-                      >
-                        {results.master.map((m) => (
-                          <CommandItem
-                            key={`m-${m.id}`}
-                            value={`master ${m.id} ${m.title}`}
-                            onSelect={() => handleSelect('master', m.id)}
-                            className="hover:bg-slate-100 dark:hover:bg-slate-800"
-                          >
-                            <Database className={`${ICON_CLASSES} text-[#0d9488]`} />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                                {m.title}
-                              </div>
-                              <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                {m.subtitle}
-                              </div>
-                            </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
+                {!hasQuery && (
+                  <div className="px-4 pb-3 pt-1 text-center text-xs text-slate-400 dark:text-slate-500">
+                    {t('search.pages_hint')}
+                  </div>
+                )}
 
-                    {results.meter.length > 0 && (
-                      <CommandGroup
-                        heading={t('search.group.meter')}
-                        className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
+                {results.devices.length > 0 && (
+                  <CommandGroup
+                    heading={t('search.group.devices')}
+                    className={GROUP_HEADING_CLASSES}
+                  >
+                    {results.devices.map((d) => (
+                      <CommandItem
+                        key={`d-${d.id}`}
+                        value={`device ${d.id} ${d.title}`}
+                        onSelect={() => handleSelect('device', d.id)}
+                        className="hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
-                        {results.meter.map((m) => (
-                          <CommandItem
-                            key={`r-${m.id}`}
-                            value={`meter ${m.id} ${m.title}`}
-                            onSelect={() => handleSelect('meter', m.id, m.deviceId)}
-                            className="hover:bg-slate-100 dark:hover:bg-slate-800"
-                          >
-                            <Gauge className={`${ICON_CLASSES} text-[#f59e0b]`} />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                                {m.title}
-                              </div>
-                              <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                {m.subtitle}
-                              </div>
-                            </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
+                        <Package className={`${ICON_CLASSES} text-[#f97316]`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {d.title}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {d.subtitle}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
 
-                    {results.audit.length > 0 && (
-                      <CommandGroup
-                        heading={t('search.group.audit')}
-                        className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
+                {results.workOrders.length > 0 && (
+                  <CommandGroup
+                    heading={t('search.group.workorders')}
+                    className={GROUP_HEADING_CLASSES}
+                  >
+                    {results.workOrders.map((w) => (
+                      <CommandItem
+                        key={`w-${w.id}`}
+                        value={`workorder ${w.id} ${w.title}`}
+                        onSelect={() => handleSelect('workorder', w.id)}
+                        className="hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
-                        {results.audit.map((a) => (
-                          <CommandItem
-                            key={`a-${a.id}`}
-                            value={`audit ${a.id} ${a.title}`}
-                            onSelect={() => handleSelect('audit', a.id)}
-                            className="hover:bg-slate-100 dark:hover:bg-slate-800"
-                          >
-                            <History className={`${ICON_CLASSES} text-slate-500 dark:text-slate-400`} />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                                {a.title}
-                              </div>
-                              <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                {a.subtitle}
-                              </div>
-                            </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
+                        <Wrench className={`${ICON_CLASSES} text-[#f43f5e]`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {w.title}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {w.subtitle}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
 
-                    {results.sites.length > 0 && (
-                      <CommandGroup
-                        heading={t('search.group.sites')}
-                        className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
+                {results.stock.length > 0 && (
+                  <CommandGroup
+                    heading={t('search.group.stock')}
+                    className={GROUP_HEADING_CLASSES}
+                  >
+                    {results.stock.map((s) => (
+                      <CommandItem
+                        key={`s-${s.id}`}
+                        value={`stock ${s.id} ${s.title}`}
+                        onSelect={() => handleSelect('stock', s.id)}
+                        className="hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
-                        {results.sites.map((s) => (
-                          <CommandItem
-                            key={`s-${s.id}`}
-                            value={`site ${s.id} ${s.title}`}
-                            onSelect={() => handleSelect('site', s.id)}
-                            className="hover:bg-slate-100 dark:hover:bg-slate-800"
-                          >
-                            <Building2 className={`${ICON_CLASSES} text-[#0d9488]`} />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                                {s.title}
-                              </div>
-                              <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                {s.subtitle}
-                              </div>
-                            </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    )}
+                        <Boxes className={`${ICON_CLASSES} text-[#10b981]`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {s.title}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {s.subtitle}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
 
-                    <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
-                      พบ {total} ผลลัพธ์ · กด <kbd className="rounded border border-slate-200 bg-slate-50 px-1 py-0.5 text-[10px] dark:border-slate-700 dark:bg-slate-800">↵</kbd> เพื่อเปิด
-                    </div>
-                  </>
+                {results.master.length > 0 && (
+                  <CommandGroup
+                    heading={t('search.group.master')}
+                    className={GROUP_HEADING_CLASSES}
+                  >
+                    {results.master.map((m) => (
+                      <CommandItem
+                        key={`m-${m.id}`}
+                        value={`master ${m.id} ${m.title}`}
+                        onSelect={() => handleSelect('master', m.id)}
+                        className="hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        <Database className={`${ICON_CLASSES} text-[#0d9488]`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {m.title}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {m.subtitle}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {results.meter.length > 0 && (
+                  <CommandGroup
+                    heading={t('search.group.meter')}
+                    className={GROUP_HEADING_CLASSES}
+                  >
+                    {results.meter.map((m) => (
+                      <CommandItem
+                        key={`r-${m.id}`}
+                        value={`meter ${m.id} ${m.title}`}
+                        onSelect={() => handleSelect('meter', m.id, m.deviceId)}
+                        className="hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        <Gauge className={`${ICON_CLASSES} text-[#f59e0b]`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {m.title}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {m.subtitle}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {results.audit.length > 0 && (
+                  <CommandGroup
+                    heading={t('search.group.audit')}
+                    className={GROUP_HEADING_CLASSES}
+                  >
+                    {results.audit.map((a) => (
+                      <CommandItem
+                        key={`a-${a.id}`}
+                        value={`audit ${a.id} ${a.title}`}
+                        onSelect={() => handleSelect('audit', a.id)}
+                        className="hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        <History className={`${ICON_CLASSES} text-slate-500 dark:text-slate-400`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {a.title}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {a.subtitle}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {results.sites.length > 0 && (
+                  <CommandGroup
+                    heading={t('search.group.sites')}
+                    className={GROUP_HEADING_CLASSES}
+                  >
+                    {results.sites.map((s) => (
+                      <CommandItem
+                        key={`site-${s.id}`}
+                        value={`site ${s.id} ${s.title}`}
+                        onSelect={() => handleSelect('site', s.id)}
+                        className="hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        <Building2 className={`${ICON_CLASSES} text-[#0d9488]`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {s.title}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {s.subtitle}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {hasQuery && hasDataResults && (
+                  <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
+                    {t('search.hint_kbd')}
+                  </div>
                 )}
               </CommandList>
             </Command>

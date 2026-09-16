@@ -56,14 +56,14 @@ const REPORT_COLUMNS: Record<ReportGroup, ColumnDef[]> = {
     { key: 'purchasePrice', label: 'Price', default: false },
   ],
   workorders: [
-    { key: 'woNumber', label: 'No.at', default: true },
+    { key: 'woNumber', label: 'เลขที่', default: true },
     { key: 'subject', label: 'Subject', default: true },
     { key: 'status', label: 'common.status', default: true },
-    { key: 'priority', label: 'urgentUrgent', default: true },
+    { key: 'priority', label: 'ความเร่งด่วน', default: true },
     { key: 'reporterName', label: 'Reporter', default: true },
-    { key: 'assignedTo', label: 'PersonReceivewronglike', default: false },
-    { key: 'createdAt', label: 'DateReport', default: false },
-    { key: 'closedAt', label: 'DateClose', default: false },
+    { key: 'assignedTo', label: 'ผู้รับงาน', default: false },
+    { key: 'createdAt', label: 'วันที่แจ้ง', default: false },
+    { key: 'closedAt', label: 'วันที่ปิด', default: false },
     { key: 'siteCode', label: 'common.site', default: false },
   ],
   meters: [
@@ -74,33 +74,33 @@ const REPORT_COLUMNS: Record<ReportGroup, ColumnDef[]> = {
     { key: 'pagesBw', label: 'sheets B&W', default: true },
     { key: 'pagesColor', label: 'sheets Color', default: true },
     { key: 'readingType', label: 'common.type', default: false },
-    { key: 'readBy', label: 'PersonRead', default: false },
+    { key: 'readBy', label: 'ผู้จดมิเตอร์', default: false },
   ],
   stock: [
     { key: 'productCode', label: 'common.code', default: true },
     { key: 'productName', label: 'common.name', default: true },
     { key: 'quantity', label: 'Remaining', default: true },
-    { key: 'minQuantity', label: 'LowEnd', default: true },
+    { key: 'minQuantity', label: 'ขั้นต่ำ', default: true },
     { key: 'unit', label: 'common.unit', default: false },
     { key: 'unitCost', label: 'Price/Unit', default: false },
-    { key: 'totalValue', label: 'ValueTotal', default: false },
+    { key: 'totalValue', label: 'มูลค่ารวม', default: false },
     { key: 'site', label: 'common.site', default: false },
   ],
   maintenance: [
-    { key: 'assetCode', label: 'CodeDevice', default: true },
+    { key: 'assetCode', label: 'รหัสอุปกรณ์', default: true },
     { key: 'subject', label: 'Problem', default: true },
     { key: 'status', label: 'common.status', default: true },
     { key: 'assignedTo', label: 'role.staff', default: true },
-    { key: 'createdAt', label: 'DateReceive', default: false },
-    { key: 'closedAt', label: 'DateClose', default: false },
+    { key: 'createdAt', label: 'วันที่รับงาน', default: false },
+    { key: 'closedAt', label: 'วันที่ปิด', default: false },
   ],
   approvals: [
     { key: 'reports.unit.type', label: 'common.type', default: true },
     { key: 'status', label: 'common.status', default: true },
-    { key: 'requestedBy', label: 'Personrequest', default: true },
-    { key: 'approvedBy', label: 'PersonApprove', default: false },
-    { key: 'createdAt', label: 'Daterequest', default: false },
-    { key: 'approvedAt', label: 'DateApprove', default: false },
+    { key: 'requestedBy', label: 'ผู้ขอ', default: true },
+    { key: 'approvedBy', label: 'ผู้อนุมัติ', default: false },
+    { key: 'createdAt', label: 'วันที่ขอ', default: false },
+    { key: 'approvedAt', label: 'วันที่อนุมัติ', default: false },
   ],
 }
 import {
@@ -125,12 +125,12 @@ type ReportGroup =
   | 'approvals'
 
 const GROUP_LABELS: Record<ReportGroup, string> = {
-  devices: 'ReportDevice',
-  meters: 'ReportMeter',
-  workorders: 'ReportWork Order',
-  stock: 'ReportStock',
-  maintenance: 'ReportRepairmaintain',
-  approvals: 'ReportApprove',
+  devices: 'รายงานอุปกรณ์',
+  meters: 'รายงานมิเตอร์',
+  workorders: 'รายงานใบงาน',
+  stock: 'รายงานสต๊อก',
+  maintenance: 'รายงานซ่อมบำรุง',
+  approvals: 'รายงานการอนุมัติ',
 }
 
 interface Site {
@@ -199,7 +199,7 @@ export function ReportsHub() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'LoadReportNoSuccess')
+        throw new Error(j.error ?? 'โหลดรายงานไม่สำเร็จ')
       }
       return res.json()
     },
@@ -209,7 +209,7 @@ export function ReportsHub() {
   React.useEffect(() => {
     if (error) {
       toast.error(
-        error instanceof Error ? error.message : 'LoadReportNoSuccess',
+        error instanceof Error ? error.message : 'โหลดรายงานไม่สำเร็จ',
       )
     }
   }, [error])
@@ -218,10 +218,10 @@ export function ReportsHub() {
   function handleExportCSV() {
     if (!data) return
     const rows: string[] = []
-    rows.push(`Report,${GROUP_LABELS[activeGroup]}`)
-    rows.push(`months,${formatMonthLabel(month)}`)
-    rows.push(`Site,${site === 'all' ? 'AllSite' : site}`)
-    rows.push(`CreateWhen,${new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}`)
+    rows.push(`รายงาน,${GROUP_LABELS[activeGroup]}`)
+    rows.push(`เดือน,${formatMonthLabel(month)}`)
+    rows.push(`ไซต์,${site === 'all' ? 'ทุกไซต์' : site}`)
+    rows.push(`สร้างเมื่อ,${new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}`)
     rows.push('')
     const flatten = (obj: unknown, prefix = '') => {
       if (obj === null || obj === undefined) return
@@ -263,7 +263,7 @@ export function ReportsHub() {
     a.download = `report-${activeGroup}-${month}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    toast.success('Export CSV ')
+    toast.success('ส่งออก CSV แล้ว')
   }
 
   return (
@@ -277,16 +277,16 @@ export function ReportsHub() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow">
                   <FileText className="h-5 w-5" />
                 </div>
-                <span>centerReport</span>
+                <span>ศูนย์รายงาน</span>
                 <Badge
                   variant="outline"
                   className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300"
                 >
-                  5 Group + Approve
+                  5 กลุ่ม + การอนุมัติ
                 </Badge>
               </CardTitle>
               <CardDescription className="mt-1 text-xs md:text-sm">
-                ReportSummaryByDevice / Meter / Work Order / Stock / Repairmaintain andReportApprove
+                รายงานสรุปตามอุปกรณ์ / มิเตอร์ / ใบงาน / สต๊อก / ซ่อมบำรุง และรายงานการอนุมัติ
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -325,7 +325,7 @@ export function ReportsHub() {
                 onClick={() => setPrintTemplateOpen(true)}
                 disabled={!data}
                 className="h-10 border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
-                title="SelectTemplateBeforePrint PDF"
+                title="เลือกเทมเพลตก่อนพิมพ์ PDF"
               >
                 <Printer className="mr-1 h-3.5 w-3.5" />
                 Print PDF
@@ -337,7 +337,7 @@ export function ReportsHub() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="rh-month" className="text-xs font-medium">
-                months
+                เดือน
               </Label>
               <Input
                 id="rh-month"
@@ -356,10 +356,10 @@ export function ReportsHub() {
                 </Label>
                 <Select value={site} onValueChange={setSite}>
                   <SelectTrigger id="rh-site" className="h-10">
-                    <SelectValue placeholder="AllSite" />
+                    <SelectValue placeholder="ทุกไซต์" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">AllSite</SelectItem>
+                    <SelectItem value="all">ทุกไซต์</SelectItem>
                     {sites.map((s) => (
                       <SelectItem key={s.id} value={s.code}>
                         {s.name} ({s.code})
@@ -370,7 +370,7 @@ export function ReportsHub() {
               </div>
             )}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Data </Label>
+              <Label className="text-xs font-medium">ข้อมูล</Label>
               <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground">
                 <CalendarDays className="h-3.5 w-3.5" />
                 {data?.generatedAt
@@ -407,7 +407,7 @@ export function ReportsHub() {
           </TabsTrigger>
           <TabsTrigger value="maintenance" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Activity className="h-4 w-4" />
-            <span>Repairmaintain</span>
+            <span>ซ่อมบำรุง</span>
           </TabsTrigger>
           <TabsTrigger value="approvals" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <ShieldCheck className="h-4 w-4" />
@@ -421,7 +421,7 @@ export function ReportsHub() {
         ) : !data ? (
           <Card className="min-h-0 flex-1">
             <CardContent className="flex flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
-              <span>NoCanLoadReport</span>
+              <span>ไม่สามารถโหลดรายงานได้</span>
               <Button
                 variant="outline"
                 size="sm"
@@ -429,7 +429,7 @@ export function ReportsHub() {
                 className="mt-2"
               >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                tryNew
+                ลองใหม่
               </Button>
             </CardContent>
           </Card>
@@ -456,9 +456,9 @@ export function ReportsHub() {
         open={printTemplateOpen}
         onOpenChange={setPrintTemplateOpen}
         templateType="work-order"
-        actionLabel="Print"
+        actionLabel="พิมพ์"
         onSelect={(template) => {
-          toast.success(`SelectTemplate: ${template.name}`)
+          toast.success(`เลือกเทมเพลต: ${template.name}`)
           if (typeof window !== 'undefined') window.print()
         }}
       />

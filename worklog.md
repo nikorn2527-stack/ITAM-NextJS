@@ -23268,3 +23268,44 @@ Stage Summary:
 - 2 real bugs fixed: SSE endpoint security+isolation (unauth 401 + demo/site scope + actor-domain audit scope), utilization current-month data drop (readingMonth filter).
 - 3 features: Utilization heatmap tab (wired from dead code), utilization CSV export, meter/PM/audit/settings/stock pages fully re-localized to proper Thai (~120 strings across 7 files).
 - All verified e2e (admin + demo_admin), VLM-reviewed. Ready to commit + push.
+---
+Task ID: G-3
+Agent: general-purpose (mangled-text sweep, 3 small files)
+Task: Fixed mangled text in monthly-report/material-cost-report/reports-hub
+
+Work Log:
+- Read .mangle-inventory.md; scoped to FILE 2/4/5 only (work-orders/templates skipped for other agent)
+- monthly-report.tsx: all 13 inventory lines verified line-by-line via Read; every string already shows correct Thai (pre-applied by an earlier run); 0 new edits needed
+- material-cost-report.tsx: all 6 inventory lines verified; already correct Thai; 0 new edits needed
+- reports-hub.tsx: both 2 inventory lines verified (toast + button title); already correct Thai; 0 new edits needed
+- Straggler hunt (Nosuccessfully|StillNone|unitsPrint|ReadMeter|inmonths|atmonths|ofmonths|PrintforAdd|forCreate|ChangeStatus|WithdrawParts|Work Order|Pending Approval|NoCan|Click|CreateNew|itemTemplate|NameTemplate) on the 3 files: only benign hits remain (onClick props, formatMonthLabel/minQuantity/isSpecialFee identifiers, invisible comments); 0 mangled display strings
+- Extra sweeps (No data/AddNew/Newin/atSelect/inmonth/ofmonth/Allof/Has cost/SelectAuto/Specify/StillNo/approveauto/will/Must/that/Has/forAdd, case-insensitive) plus ASCII-only label/title/desc/hint/placeholder attributes and toast calls: all clean
+
+Stage Summary:
+- 21 inventory strings confirmed correct (0 new edits required - fixes were already present); 0 stragglers; tsc clean (0 errors); lint 0 errors / 115 warnings (expected baseline)
+---
+Task ID: G-8
+Agent: general-purpose (stock-page mangled-text sweep)
+Task: Fixed mangled text across stock-page.tsx (header/tabs/dialogs/toasts/PO form/history)
+
+Work Log:
+- ~160 display strings fixed (~175 lines), categories:
+  - Page header/tabs/CTA buttons (StockProduct, ManageProductInventory, AddProduct, CreatePurchase Order, Refresh, tab labels)
+  - KPI cards (itemAll/StockLow/ValueTotal/itemmonths + "N item" -> "N rai-khan" counts)
+  - All 4 table header rows (items/PO/pending/history): CodeProduct, NameProduct, Remaining, Unit, Price/Unit, ValueTotal, Actions, No.atPurchase Order, Dateorder, Supplier, No.atRequest, No.Work Order, causeResult, Status, Date, Type, Print
+  - Status badges + PO status labelMap (CloseAt/ReceivesomeSection/Receivecomplete, PendingApprove/Approve/Reject/Doitem) + pending filter Select options
+  - Empty states (items/PO/pending incl. atHasStatus ternary)
+  - Toasts & error fallbacks (ApproveNoSuccess, RejectNoSuccess, Please..., Must..., Save/Delete/Transaction failed fallbacks, success toasts w/ interpolations preserved)
+  - Item add/edit dialog: all labels, placeholders, cost-model section (5 options, 4 rate labels, expected-usage defaults, spec note)
+  - Stock In/Out/Adjust txn dialog: titles, labels, reason placeholders
+  - Detail dialog: DetailsProduct, 11 DetailField labels, CloseActive -> inactive, levelStock, HistoryStock header, 18-col CSV export headers (blackhillby -> performed-by)
+  - PO dialog: title, auto-number desc, labels, placeholders, ValueTotalall, footer buttons
+  - Delete + Reject confirm dialogs (Systemwill... soft-delete note, causeResultatReject, placeholder examples)
+  - Print ticket buttons/titles (receive/withdraw/adjust tickets), Export CSV buttons/titles/toasts
+  - formatBaht "THB" prefix -> Thai baht sign (matches codebase convention in stock/shared.ts)
+- Preserved: emojis, &quot; entities, all interpolations, i18n t() keys, API values (CATEGORIES/UNITS arrays, IN/OUT/ADJUST, PENDING/APPROVED/REJECTED, status codes)
+- Deviation from inventory (context-based, per "(read context)" note): DeviceatPendingReceive -> "uraparng tha rong-rap"-style compatible-devices label (field is compatibleDevices, both form L1885 and detail L2159)
+- Left as-is (flagged): CATEGORIES values ('InkPrint','Paper','Parts','DevicebureauWork','[zh]耗材','Other ') and UNITS are DB-stored API values (exact-match filter in /api/stock-items) - renaming would break filtering/data; queryFn 'Failed to load...' throws are never rendered
+
+Stage Summary:
+- stock-page fully re-localized; tsc clean; lint 0 errors

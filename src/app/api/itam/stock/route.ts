@@ -54,6 +54,9 @@ export async function GET(req: NextRequest) {
     const q = searchParams.get('q')?.trim() ?? ''
 
     const where: Record<string, unknown> = { AND: [{ ...orgScope.where }] }
+    // DEMO ISOLATION FIX (QA-ROUND-G): demoFilter was imported but never
+    // applied — demo users saw REAL stock items mixed into their list.
+    ;(where.AND as unknown[]).push(demoFilter(auth.user))
     const sf = siteFilterForUser(user)
     if (Object.keys(sf).length) (where.AND as unknown[]).push(sf)
     if (site) (where.AND as unknown[]).push({ site })
@@ -88,7 +91,7 @@ export async function GET(req: NextRequest) {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
     const txnThisMonth = await db.stockTransaction.count({
-      where: { txnDate: { gte: monthStart } },
+      where: { txnDate: { gte: monthStart }, ...demoFilter(auth.user) },
     })
 
     return NextResponse.json({ items, stats: { txnThisMonth } })

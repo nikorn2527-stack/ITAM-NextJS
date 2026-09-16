@@ -5,6 +5,7 @@ import { siteFilterForUser } from '@/lib/auth'
 import { isNumericShortQuery } from '@/lib/suffix-search'
 import { verifyToken } from '@/lib/auth'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { demoFilter } from '@/lib/demo-mode'
 
 // GET /api/itam/search?q= — global search across entities
 export async function GET(req: NextRequest) {
@@ -51,6 +52,10 @@ export async function GET(req: NextRequest) {
     const [devices, masterItems, auditLogs, sites] = await Promise.all([
       db.device.findMany({
         where: {
+          // DEMO ISOLATION FIX (QA-ROUND-G): demo users must only see demo
+          // rows — previously the site filter was applied but isDemo was not,
+          // so demo users found REAL devices via the QR-scan lookup.
+          ...demoFilter(auth.user),
           AND: [
             sf,
             {
@@ -69,6 +74,7 @@ export async function GET(req: NextRequest) {
       }),
       db.masterItem.findMany({
         where: {
+          ...demoFilter(auth.user),
           OR: [
             { label: { contains: q } },
             { displayLabel: { contains: q } },
@@ -82,6 +88,14 @@ export async function GET(req: NextRequest) {
           // Non-admin users only see their own audit entries
           // SPRINT-2 #5: use isAdmin flag from ctx (case-insensitive) instead
           // of raw user.role string comparison
+          // DEMO ISOLATION FIX (QA-ROUND-G): demo users must NEVER see real
+          // actors' audit entries — even demo_admin (globalRole admin). Real
+          // users conversely never see @itam.demo actor rows. AuditLog.isDemo
+          // is not populated by logAudit, so the email domain is the only
+          // trustworthy discriminator (same approach as the SSE route).
+          ...(auth.user.isDemo
+            ? { actor: { endsWith: '@itam.demo' } }
+            : { NOT: { actor: { endsWith: '@itam.demo' } } }),
           ...(isAdmin ? {} : { actor: user.email }),
           OR: [
             { action: { contains: q } },
@@ -95,7 +109,16 @@ export async function GET(req: NextRequest) {
       }),
       db.siteAttribute.findMany({
         where: isSiteFiltered
-          ? { SiteName: { in: ((sf.site as { in: string[] } | undefined)?.in) ?? [] } }
+          ? // QA-ROUND-G fix: allowedSites holds site CODES (UDH/NKP/...), but
+            // the old query matched SiteName only — real sites never matched
+            // (their names are Thai). Match either code or name; demo sites
+            // have SiteName == SiteCode so they keep working.
+            {
+              OR: [
+                { SiteCode: { in: ((sf.site as { in: string[] } | undefined)?.in) ?? [] } },
+                { SiteName: { in: ((sf.site as { in: string[] } | undefined)?.in) ?? [] } },
+              ],
+            }
           : {
               OR: [
                 { SiteCode: { contains: q } },

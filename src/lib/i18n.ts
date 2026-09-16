@@ -726,14 +726,19 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
 
   // ───────────── Global search ─────────────
   'search.title': { th: 'ค้นหาทั่วระบบ', en: 'Global Search' },
-  'search.placeholder': { th: 'ค้นหาอุปกรณ์, มาสเตอร์, มิเตอร์, ประวัติ...', en: 'Search devices, master data, meters, history...' },
+  'search.placeholder': { th: 'ค้นหาอุปกรณ์ ใบแจ้งซ่อม อะไหล่ หรือพิมพ์ชื่อหน้า...', en: 'Search devices, work orders, stock — or jump to a page...' },
   'search.empty': { th: 'ไม่พบผลลัพธ์', en: 'No results found' },
   'search.group.devices': { th: 'อุปกรณ์', en: 'Devices' },
   'search.group.master': { th: 'ข้อมูลมาตรฐาน', en: 'Master Data' },
+  'search.group.workorders': { th: 'ใบแจ้งซ่อม', en: 'Work Orders' },
+  'search.group.stock': { th: 'อะไหล่และวัสดุ', en: 'Stock Items' },
   'search.group.meter': { th: 'การจดมิเตอร์', en: 'Meter Readings' },
   'search.group.audit': { th: 'ประวัติการใช้งาน', en: 'Audit Log' },
   'search.group.sites': { th: 'สาขา', en: 'Sites' },
+  'search.group.pages': { th: 'ไปยังหน้า', en: 'Jump to' },
   'search.hint_typing': { th: 'พิมพ์อย่างน้อย 2 ตัวอักษรเพื่อค้นหา', en: 'Type at least 2 characters to search' },
+  'search.hint_kbd': { th: 'เลื่อนดูด้วย ↑↓ แล้วกด ↵ เพื่อเปิด · กด Esc เพื่อปิด', en: 'Navigate with ↑↓, press ↵ to open · Esc to close' },
+  'search.pages_hint': { th: 'พิมพ์เพื่อค้นหา หรือเลือกหน้าด้านล่างเพื่อไปยังหน้านั้นทันที', en: 'Type to search, or pick a page below to jump straight to it' },
 
   // ───────────── Roles ─────────────
   'role.admin': { th: 'ผู้ดูแลระบบ', en: 'Administrator' },

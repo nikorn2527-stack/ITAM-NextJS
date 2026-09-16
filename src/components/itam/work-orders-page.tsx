@@ -339,28 +339,28 @@ interface PartsListApiResponse {
 // Constants
 // ============================================================
 const STATUS_OPTIONS = [
-  { value: 'all', label: 'StatusAll' },
-  { value: 'PENDING_REVIEW', label: 'PendingCheck' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'IN_PROGRESS', label: 'In Progress' },
-  { value: 'WAITING_PARTS', label: 'PendingParts' },
-  { value: 'COMPLETED', label: 'Done' },
-  { value: 'CANCELLED', label: 'Cancel' },
+  { value: 'all', label: 'ทั้งหมด' },
+  { value: 'PENDING_REVIEW', label: 'รอตรวจสอบ' },
+  { value: 'PENDING', label: 'รอดำเนินการ' },
+  { value: 'IN_PROGRESS', label: 'กำลังซ่อม' },
+  { value: 'WAITING_PARTS', label: 'รออะไหล่' },
+  { value: 'COMPLETED', label: 'เสร็จแล้ว' },
+  { value: 'CANCELLED', label: 'ยกเลิก' },
 ] as const
 
 const PRIORITY_OPTIONS = [
-  { value: 'all', label: 'priorityUrgentAll' },
-  { value: 'priority.normal', label: 'Normal' },
-  { value: 'Medium', label: 'Medium' },
-  { value: 'High', label: 'High' },
-  { value: 'priority.urgent', label: 'Urgent' },
+  { value: 'all', label: 'ความเร่งด่วนทั้งหมด' },
+  { value: 'priority.normal', label: 'ปกติ' },
+  { value: 'Medium', label: 'ปานกลาง' },
+  { value: 'High', label: 'สูง' },
+  { value: 'priority.urgent', label: 'ด่วน' },
 ] as const
 
 const PRIORITY_FORM_OPTIONS = [
-  { value: 'priority.normal', label: 'Normal' },
-  { value: 'Medium', label: 'Medium' },
-  { value: 'High', label: 'High' },
-  { value: 'priority.urgent', label: 'Urgent' },
+  { value: 'priority.normal', label: 'ปกติ' },
+  { value: 'Medium', label: 'ปานกลาง' },
+  { value: 'High', label: 'สูง' },
+  { value: 'priority.urgent', label: 'ด่วน' },
 ] as const
 
 const PAGE_SIZE = 12
@@ -662,7 +662,7 @@ export function WorkOrdersPage() {
 
   async function handleCreate() {
     if (!form.subject.trim()) {
-      toast.error('Please specifyProblem Type')
+      toast.error('กรุณาระบุประเภทปัญหา')
       return
     }
     // ── Per-job-type validation (Task ID: UX-GAPS-3-ITEMS) ──
@@ -671,12 +671,12 @@ export function WorkOrdersPage() {
     // guest:    reporterName + tel required (ContactDirectory verification)
     if (form.jobType === 'external') {
       if (!form.clientName.trim()) {
-        toast.error('Please specifyNameCustomermainAcceptoutside')
+        toast.error('กรุณาระบุชื่อลูกค้าภายนอก')
         return
       }
     } else if (form.jobType === 'guest') {
       if (!form.reporterName.trim() || !form.tel.trim()) {
-        toast.error('Reporter (Guest) MustSpecifyNameandPhone forConfirmidentity')
+        toast.error('ผู้แจ้ง (Guest) ต้องระบุชื่อและเบอร์โทรเพื่อยืนยันตัวตน')
         return
       }
     }
@@ -733,16 +733,16 @@ export function WorkOrdersPage() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'SaveNosuccessfully')
+        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
       }
       const json = await res.json()
-      toast.success(`CreateRepair Ticket ${json.data?.woNumber ?? ''} `)
+      toast.success(`สร้างใบแจ้งซ่อม ${json.data?.woNumber ?? ''} แล้ว`)
       setCreateOpen(false)
       qc.invalidateQueries({ queryKey: ['work-orders'] })
       // Open the new detail right away
       if (json.data?.id) setDetailId(json.data.id)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'SaveNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -778,10 +778,10 @@ export function WorkOrdersPage() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold md:text-2xl">
             <Wrench className="h-6 w-6 text-orange-500" />
-            Repair Request
+            แจ้งซ่อม
           </h1>
           <p className="text-sm text-muted-foreground">
-            SystemRepair Requestcomplete — Report → Accept → Repair → Close (PendingReceiveCustomerexternal)
+            ระบบแจ้งซ่อมครบวงจร — แจ้ง → รับ → ซ่อม → ปิดงาน (รอรับเครื่องคืนจากลูกค้าภายนอก)
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -799,7 +799,7 @@ export function WorkOrdersPage() {
           </Button>
           <Button type="button" size="sm" onClick={openCreate} className="bg-orange-500 hover:bg-orange-600">
             <Plus className="h-4 w-4" />
-            Repair RequestNew
+            แจ้งซ่อมใหม่
           </Button>
         </div>
       </div>
@@ -832,31 +832,31 @@ export function WorkOrdersPage() {
       {/* KPI stats bar */}
       <div className="grid flex-shrink-0 grid-cols-2 gap-3 lg:grid-cols-5">
         <KpiCard
-          label="PendingCheck"
+          label="รอตรวจสอบ"
           value={stats.PENDING_REVIEW ?? 0}
           icon={<AlertTriangle className="h-5 w-5" />}
           color="orange"
         />
         <KpiCard
-          label="Pending"
+          label="รอดำเนินการ"
           value={stats.PENDING ?? 0}
           icon={<Clock className="h-5 w-5" />}
           color="amber"
         />
         <KpiCard
-          label="In Progress"
+          label="กำลังซ่อม"
           value={(stats.IN_PROGRESS ?? 0) + (stats.WAITING_PARTS ?? 0)}
           icon={<Wrench className="h-5 w-5" />}
           color="blue"
         />
         <KpiCard
-          label="Done"
+          label="เสร็จแล้ว"
           value={stats.COMPLETED ?? 0}
           icon={<CheckCircle2 className="h-5 w-5" />}
           color="emerald"
         />
         <KpiCard
-          label="Cancel"
+          label="ยกเลิก"
           value={stats.CANCELLED ?? 0}
           icon={<XCircle className="h-5 w-5" />}
           color="rose"
@@ -871,9 +871,9 @@ export function WorkOrdersPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="SearchNo.Work Order / Problem / placeat / Reporter / Phone / CodeemployeeWork / Technician / ResultEdit"
+              placeholder="ค้นหา เลขที่ใบงาน / ปัญหา / สถานที่ / ผู้แจ้ง / โทรศัพท์ / รหัสพนักงาน / ช่าง / ผลการแก้ไข"
               className="pl-9 pr-9"
-              aria-label="SearchRepair Ticket"
+              aria-label="ค้นหาใบแจ้งซ่อม"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   setSearch((e.target as HTMLInputElement).value)
@@ -885,15 +885,15 @@ export function WorkOrdersPage() {
               type="button"
               onClick={() => useAppStore.getState().setQrScannerOpen(true)}
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-orange-500"
-              title="Scan QR / barcode"
-              aria-label="Scan QR / barcode"
+              title="สแกน QR / บาร์โคด"
+              aria-label="สแกน QR / บาร์โคด"
             >
               <ScanLine className="h-4 w-4" />
             </button>
           </div>
           <div className="grid grid-cols-2 gap-2 md:flex md:w-auto">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-[160px]" aria-label="FilterStatus">
+              <SelectTrigger className="w-full md:w-[160px]" aria-label="ตัวกรองสถานะ">
                 <SelectValue placeholder={t('settings.col.status')} />
               </SelectTrigger>
               <SelectContent>
@@ -905,8 +905,8 @@ export function WorkOrdersPage() {
               </SelectContent>
             </Select>
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="w-full md:w-[160px]" aria-label="FilterpriorityUrgent">
-                <SelectValue placeholder="priorityUrgent" />
+              <SelectTrigger className="w-full md:w-[160px]" aria-label="ตัวกรองความเร่งด่วน">
+                <SelectValue placeholder="ความเร่งด่วน" />
               </SelectTrigger>
               <SelectContent>
                 {PRIORITY_OPTIONS.map((o) => (
@@ -918,11 +918,11 @@ export function WorkOrdersPage() {
             </Select>
             {showSiteFilter && (
               <Select value={siteFilter} onValueChange={setSiteFilter}>
-                <SelectTrigger className="w-full md:w-[160px]" aria-label="FilterSite">
+                <SelectTrigger className="w-full md:w-[160px]" aria-label="ตัวกรองไซต์">
                   <SelectValue placeholder={t('devices.filter.site_placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">AllSite</SelectItem>
+                  <SelectItem value="all">ทุกไซต์</SelectItem>
                   {sites.map((s) => (
                     <SelectItem key={s.id} value={s.code}>
                       {s.code} {s.name ? `— ${s.name}` : ''}
@@ -950,13 +950,13 @@ export function WorkOrdersPage() {
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950">
               <Wrench className="h-7 w-7 text-orange-500" />
             </div>
-            <div className="text-base font-medium">StillNoneRepair Ticket</div>
+            <div className="text-base font-medium">ยังไม่มีใบแจ้งซ่อม</div>
             <p className="max-w-sm text-sm text-muted-foreground">
-              Clickbutton &quot;Repair RequestNew&quot; forCreateWork Orderfirst orReceiveunitFilterforSearchWork Orderold
+              กดปุ่ม &quot;แจ้งซ่อมใหม่&quot; เพื่อสร้างใบงานแรก หรือใช้ตัวกรองเพื่อค้นหาใบงานเดิม
             </p>
             <Button type="button" size="sm" onClick={openCreate} className="mt-1 bg-orange-500 hover:bg-orange-600">
               <Plus className="h-4 w-4" />
-              Repair RequestNew
+              แจ้งซ่อมใหม่
             </Button>
           </CardContent>
         </Card>
@@ -966,16 +966,16 @@ export function WorkOrdersPage() {
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
-                  <TableHead className="text-xs">No.Work Order</TableHead>
-                  <TableHead className="text-xs">Subject</TableHead>
-                  <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="text-xs">Importance</TableHead>
-                  <TableHead className="text-xs">Building/Location</TableHead>
-                  <TableHead className="text-xs">Reporter</TableHead>
-                  <TableHead className="text-xs">phone</TableHead>
-                  <TableHead className="text-xs">PersonReceivewronglike</TableHead>
-                  <TableHead className="text-xs">DateReport</TableHead>
-                  <TableHead className="text-right text-xs">Actions</TableHead>
+                  <TableHead className="text-xs">เลขที่ใบงาน</TableHead>
+                  <TableHead className="text-xs">เรื่อง</TableHead>
+                  <TableHead className="text-xs">สถานะ</TableHead>
+                  <TableHead className="text-xs">ความเร่งด่วน</TableHead>
+                  <TableHead className="text-xs">อาคาร/สถานที่</TableHead>
+                  <TableHead className="text-xs">ผู้แจ้ง</TableHead>
+                  <TableHead className="text-xs">โทรศัพท์</TableHead>
+                  <TableHead className="text-xs">ผู้รับผิดชอบ</TableHead>
+                  <TableHead className="text-xs">วันที่แจ้ง</TableHead>
+                  <TableHead className="text-right text-xs">การจัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -993,8 +993,8 @@ export function WorkOrdersPage() {
                             {wo.systemJobNo ?? wo.woNumber ?? '—'}
                             {wo.isSpecialFee && (
                               <span
-                                title="Special (Has cost)"
-                                aria-label="Special (Has cost)"
+                                title="พิเศษ (มีค่าใช้จ่าย)"
+                                aria-label="พิเศษ (มีค่าใช้จ่าย)"
                                 className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 text-[10px] dark:bg-amber-950"
                               >
                                 💰
@@ -1003,7 +1003,7 @@ export function WorkOrdersPage() {
                           </span>
                           {wo.legacyJobNo && (
                             <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                              Original: {wo.legacyJobNo}
+                              เลขเดิม: {wo.legacyJobNo}
                             </span>
                           )}
                         </div>
@@ -1015,7 +1015,7 @@ export function WorkOrdersPage() {
                               className="shrink-0 border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
                               variant="outline"
                             >
-                              outside
+                              งานภายนอก
                             </Badge>
                           )}
                           <span className="line-clamp-2 text-sm font-medium text-slate-800 dark:text-slate-100" title={wo.subject}>
@@ -1070,8 +1070,8 @@ export function WorkOrdersPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() => setDetailId(wo.id)}
-                            aria-label="ViewDetailsWork Order"
-                            title="ViewDetails"
+                            aria-label="ดูรายละเอียดใบงาน"
+                            title="ดูรายละเอียด"
                             className="h-7 px-2 text-[11px]"
                           >
                             <Eye className="h-3.5 w-3.5" />
@@ -1084,8 +1084,8 @@ export function WorkOrdersPage() {
                               const qs = t ? `?t=${encodeURIComponent(t)}` : ''
                               window.open(`/api/work-orders/${wo.id}/print-sheet${qs}`, '_blank', 'noopener,noreferrer')
                             }}
-                            aria-label="PrintWork Order"
-                            title="PrintWork Order"
+                            aria-label="พิมพ์ใบงาน"
+                            title="พิมพ์ใบงาน"
                             className="h-7 px-2 text-[11px]"
                           >
                             <Printer className="h-3.5 w-3.5" />
@@ -1220,8 +1220,8 @@ function WorkOrderCard({
               {wo.systemJobNo ?? wo.woNumber ?? '—'}
               {wo.isSpecialFee && (
                 <span
-                  title="Special (Has cost)"
-                  aria-label="Special (Has cost)"
+                  title="พิเศษ (มีค่าใช้จ่าย)"
+                  aria-label="พิเศษ (มีค่าใช้จ่าย)"
                   className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] dark:bg-amber-950"
                 >
                   💰
@@ -1230,7 +1230,7 @@ function WorkOrderCard({
             </span>
             {wo.legacyJobNo && (
               <span className="truncate text-[10px] font-normal text-slate-500 dark:text-slate-400">
-                Original: {wo.legacyJobNo}
+                เลขเดิม: {wo.legacyJobNo}
               </span>
             )}
           </span>
@@ -1240,7 +1240,7 @@ function WorkOrderCard({
                 className="border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
                 variant="outline"
               >
-                Workoutside
+                งานภายนอก
               </Badge>
             )}
             <Badge
@@ -1332,7 +1332,7 @@ function WorkOrderCard({
                 <span className="truncate">{wo.assignedTo}</span>
               </>
             ) : wo.status === 'PENDING' ? (
-              <span className="text-amber-600 dark:text-amber-400">StillNoAssign</span>
+              <span className="text-amber-600 dark:text-amber-400">ยังไม่ได้มอบหมาย</span>
             ) : (
               <span>—</span>
             )}
@@ -1483,7 +1483,7 @@ function CreateWorkOrderDialog({
       setPicBusy(true)
       const remaining = MAX_IMAGES_PER_STAGE - form.picBeforeImages.length
       if (remaining <= 0) {
-        toast.error(`AddimageHighEnd ${MAX_IMAGES_PER_STAGE} image`)
+        toast.error(`เพิ่มรูปได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูป`)
         return
       }
       const list = Array.from(files).slice(0, remaining)
@@ -1495,7 +1495,7 @@ function CreateWorkOrderDialog({
         } catch (err) { console.error('[work-orders-page]', err) }
       }
       if (compressed.length === 0) {
-        toast.error('readFileimageNosuccessfully')
+        toast.error('อ่านไฟล์รูปภาพไม่สำเร็จ')
         return
       }
       setForm((s) => ({
@@ -1506,7 +1506,7 @@ function CreateWorkOrderDialog({
         ),
       }))
       if (list.length < files.length) {
-        toast.message(`AddHighEnd ${MAX_IMAGES_PER_STAGE} image — Add ${list.length} imagefirst`)
+        toast.message(`เพิ่มได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูป — เพิ่มแล้ว ${list.length} รูป`)
       }
     } finally {
       setPicBusy(false)
@@ -1525,7 +1525,7 @@ function CreateWorkOrderDialog({
     const v = form.serialInput.trim()
     if (!v) return
     if (form.serials.includes(v)) {
-      toast.error('S/N HasAt')
+      toast.error('S/N นี้มีอยู่แล้ว')
       return
     }
     setForm((s) => ({ ...s, serials: [...s.serials, v], serialInput: '' }))
@@ -1546,10 +1546,10 @@ function CreateWorkOrderDialog({
           <div className="min-w-0 flex-1">
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Plus className="h-5 w-5 text-orange-500" />
-              Repair RequestNew
+              แจ้งซ่อมใหม่
             </DialogTitle>
             <DialogDescription className="mt-1 text-xs sm:text-sm">
-              PendingDetailsProblem SystemwillCreateNo.Work OrderAuto (WO-YYYYMMDD-NNN)
+              ระบุรายละเอียดปัญหา ระบบจะสร้างเลขที่ใบงานอัตโนมัติ (WO-YYYYMMDD-NNN)
             </DialogDescription>
           </div>
           <DialogClose
@@ -1568,9 +1568,9 @@ function CreateWorkOrderDialog({
             {form.jobType === '' ? (
               <div className="grid gap-3">
                 <div className="rounded-lg border bg-muted/30 p-3">
-                  <div className="text-sm font-semibold">SelectTypeWork</div>
+                  <div className="text-sm font-semibold">เลือกประเภทงาน</div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
-                    SelectTypeWorkBefore — SystemwillShowOnlyReduceatrelated
+                    เลือกประเภทงานก่อน — ระบบจะแสดงเฉพาะฟิลด์ที่เกี่ยวข้อง
                   </div>
                 </div>
                 <button
@@ -1584,9 +1584,9 @@ function CreateWorkOrderDialog({
                     <Building2 className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm font-semibold">Workwithinin</div>
+                    <div className="text-sm font-semibold">งานภายใน</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      employeeWorkRepair RequestselfThroughaccountLockin — UseDataUserLockinasReporter (NoMustPendingName-phone)
+                      พนักงานแจ้งซ่อมด้วยตนเองผ่านบัญชีที่ล็อกอิน — ใช้ข้อมูลผู้ล็อกอินเป็นผู้แจ้ง (ไม่ต้องกรอกชื่อ-เบอร์)
                     </div>
                   </div>
                   <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1602,9 +1602,9 @@ function CreateWorkOrderDialog({
                     <PackageOpen className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm font-semibold">External customer work</div>
+                    <div className="text-sm font-semibold">งานลูกค้าภายนอก</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      Customerexternal/offsiteat — SpecifyNameCustomer + placeat + contact phone
+                      ลูกค้าภายนอก/หน่วยงานภายนอก — ระบุชื่อลูกค้า + สถานที่ + เบอร์ติดต่อ
                     </div>
                   </div>
                   <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1620,9 +1620,9 @@ function CreateWorkOrderDialog({
                     <User className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm font-semibold">Usergeneralto</div>
+                    <div className="text-sm font-semibold">ผู้ใช้ทั่วไป</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      UserwalkinComeRepair Request — MustSpecifyName+Phone forConfirmidentityWithContact Directory
+                      ผู้ใช้เดินเข้ามาแจ้งซ่อม — ต้องระบุชื่อ+เบอร์โทรเพื่อยืนยันตัวตนกับสมุดโทรศัพท์
                     </div>
                   </div>
                   <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1644,17 +1644,17 @@ function CreateWorkOrderDialog({
                     )}
                     <div>
                       <div className="text-sm font-medium">
-                        {form.jobType === 'internal' && 'Workwithinin'}
-                        {form.jobType === 'external' && 'External customer work'}
-                        {form.jobType === 'guest' && 'Usergeneralto'}
+                        {form.jobType === 'internal' && 'งานภายใน'}
+                        {form.jobType === 'external' && 'งานลูกค้าภายนอก'}
+                        {form.jobType === 'guest' && 'ผู้ใช้ทั่วไป'}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {form.jobType === 'internal' &&
-                          'UseDataUserLockinasReporter'}
+                          'ใช้ข้อมูลผู้ล็อกอินเป็นผู้แจ้ง'}
                         {form.jobType === 'external' &&
-                          'Customerexternal/offsiteat'}
+                          'ลูกค้าภายนอก/หน่วยงานภายนอก'}
                         {form.jobType === 'guest' &&
-                          'ReporterMustConfirmidentityWithContact Directory'}
+                          'ผู้แจ้งต้องยืนยันตัวตนกับสมุดโทรศัพท์'}
                       </div>
                     </div>
                   </div>
@@ -1668,14 +1668,14 @@ function CreateWorkOrderDialog({
                     disabled={saving}
                     className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
                   >
-                    ChangeTypeWork
+                    เปลี่ยนประเภทงาน
                   </Button>
                 </div>
 
             {/* Subject dropdown (grouped) */}
             <div className="grid gap-1.5">
               <Label htmlFor="wo-subject">
-                Problem Type <span className="text-rose-500">*</span>
+                ประเภทปัญหา <span className="text-rose-500">*</span>
               </Label>
               {subjects.length === 0 ? (
                 <Input
@@ -1684,13 +1684,13 @@ function CreateWorkOrderDialog({
                   onChange={(e) =>
                     setForm((s) => ({ ...s, subject: e.target.value }))
                   }
-                  placeholder="e.g. unitsPrintNoDoWork, internetNoattach"
+                  placeholder="เช่น เครื่องพิมพ์ไม่ทำงาน, อินเทอร์เน็ตไม่เชื่อมต่อ"
                   autoFocus
                 />
               ) : (
                 <Select value={form.subject} onValueChange={handleSubjectChange}>
                   <SelectTrigger id="wo-subject">
-                    <SelectValue placeholder="SelectProblem Type" />
+                    <SelectValue placeholder="เลือกประเภทปัญหา" />
                   </SelectTrigger>
                   <SelectContent>
                     {subjectGroups.map(([group, opts]) => (
@@ -1710,7 +1710,7 @@ function CreateWorkOrderDialog({
                         ))}
                       </SelectGroup>
                     ))}
-                    <SelectItem value="__custom__">— Specifyself —</SelectItem>
+                    <SelectItem value="__custom__">— ระบุเอง —</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -1720,13 +1720,13 @@ function CreateWorkOrderDialog({
                   onChange={(e) =>
                     setForm((s) => ({ ...s, subject: e.target.value }))
                   }
-                  placeholder="PrintSubjectProblem"
+                  placeholder="พิมพ์หัวข้อปัญหา"
                   autoFocus
                 />
               )}
               {form.subjectGroup && (
                 <div className="text-[11px] text-muted-foreground">
-                  Category: {form.subjectGroup} • priorityUrgentAuto: {form.priority}
+                  หมวดหมู่: {form.subjectGroup} • ความเร่งด่วนอัตโนมัติ: {form.priority}
                 </div>
               )}
             </div>
@@ -1737,7 +1737,7 @@ function CreateWorkOrderDialog({
                 <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
                   <div className="grid gap-1.5">
                     <Label htmlFor="wo-client">
-                      NameCustomer <span className="text-rose-500">*</span>
+                      ชื่อลูกค้า <span className="text-rose-500">*</span>
                     </Label>
                     <Input
                       id="wo-client"
@@ -1745,23 +1745,23 @@ function CreateWorkOrderDialog({
                       onChange={(e) =>
                         setForm((s) => ({ ...s, clientName: e.target.value }))
                       }
-                      placeholder="e.g. Co., Ltd.. unitLike"
+                      placeholder="เช่น บริษัท ตัวอย่าง จำกัด"
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="wo-place">placeat</Label>
+                    <Label htmlFor="wo-place">สถานที่</Label>
                     <Input
                       id="wo-place"
                       value={form.place}
                       onChange={(e) =>
                         setForm((s) => ({ ...s, place: e.target.value }))
                       }
-                      placeholder="e.g. Building X Floor 2"
+                      placeholder="เช่น อาคาร X ชั้น 2"
                     />
                   </div>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="wo-contact-phone">contact phoneCustomer</Label>
+                  <Label htmlFor="wo-contact-phone">เบอร์ติดต่อลูกค้า</Label>
                   <Input
                     id="wo-contact-phone"
                     value={form.contactPhone}
@@ -1782,7 +1782,7 @@ function CreateWorkOrderDialog({
                       onChange={(e) =>
                         setForm((s) => ({ ...s, serialInput: e.target.value }))
                       }
-                      placeholder="Pending S/N Click + forAdd"
+                      placeholder="ระบุ S/N แล้วกด + เพื่อเพิ่ม"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault()
@@ -1796,7 +1796,7 @@ function CreateWorkOrderDialog({
                       variant="outline"
                       onClick={addSerial}
                       disabled={!form.serialInput.trim()}
-                      aria-label="AddNumberserial"
+                      aria-label="เพิ่มหมายเลขซีเรียล"
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
@@ -1815,7 +1815,7 @@ function CreateWorkOrderDialog({
                             type="button"
                             onClick={() => removeSerial(s)}
                             className="ml-1 rounded-full p-0.5 hover:bg-muted"
-                            aria-label={`Delete ${s}`}
+                            aria-label={`ลบ ${s}`}
                           >
                             <XCircle className="h-3 w-3" />
                           </button>
@@ -1829,37 +1829,37 @@ function CreateWorkOrderDialog({
               <div className="grid gap-3">
                 <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
                   <div className="grid gap-1.5">
-                    <Label htmlFor="wo-building">Building / division</Label>
+                    <Label htmlFor="wo-building">อาคาร / แผนก</Label>
                     <Combobox
                       value={form.building}
                       onChange={(v) => setForm((s) => ({ ...s, building: v }))}
                       items={buildings.map((b) => ({ value: b.value, label: b.value }))}
-                      placeholder="SelectorPrintBuilding / division"
-                      emptyText="StillNoneBuilding — PrintforAddNew"
+                      placeholder="เลือกหรือพิมพ์อาคาร / แผนก"
+                      emptyText="ยังไม่มีข้อมูลอาคาร — พิมพ์เพื่อเพิ่มใหม่"
                       inputId="wo-building"
                     />
                     {buildings.length > 0 && (
                       <div className="text-[10px] text-muted-foreground">
-                        SelectfromitemsatSaveKeep ({buildings.length}) orPrintNew
+                        เลือกจากรายการที่บันทึกไว้ ({buildings.length}) หรือพิมพ์เพื่อเพิ่มใหม่
                       </div>
                     )}
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="wo-location">Location / Room</Label>
+                    <Label htmlFor="wo-location">ตำแหน่ง / ห้อง</Label>
                     <Input
                       id="wo-location"
                       value={form.location}
                       onChange={(e) =>
                         setForm((s) => ({ ...s, location: e.target.value }))
                       }
-                      placeholder="e.g. Floor 3 Room 305"
+                      placeholder="เช่น ชั้น 3 ห้อง 305"
                     />
                   </div>
                 </div>
 
                 {/* Asset lookup */}
                 <div className="grid gap-1.5">
-                  <Label htmlFor="wo-device-search">No.RegistrationDevice (Optional)</Label>
+                  <Label htmlFor="wo-device-search">รหัสทะเบียนอุปกรณ์ (ไม่บังคับ)</Label>
                   <Input
                     id="wo-device-search"
                     value={form.deviceSearch}
@@ -1870,10 +1870,10 @@ function CreateWorkOrderDialog({
                         deviceId: null,
                       }))
                     }
-                    placeholder="PrintNo.Registration / Name / S/N forSearchDevice"
+                    placeholder="พิมพ์รหัสทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
                   />
                   {deviceLoading && (
-                    <div className="text-[11px] text-muted-foreground">Search...</div>
+                    <div className="text-[11px] text-muted-foreground">กำลังค้นหา...</div>
                   )}
                   {!deviceLoading && deviceResults.length > 0 && (
                     <div className="max-h-40 overflow-y-auto rounded-md border bg-card">
@@ -1911,7 +1911,7 @@ function CreateWorkOrderDialog({
                     return (
                     <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-[11px] dark:border-emerald-800 dark:bg-emerald-950/30">
                       <div className="flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-400">
-                        <CheckCircle2 className="h-3 w-3" /> SelectDevice
+                        <CheckCircle2 className="h-3 w-3" /> อุปกรณ์ที่เลือก
                         <button
                           type="button"
                           onClick={() =>
@@ -1923,19 +1923,19 @@ function CreateWorkOrderDialog({
                           }
                           className="ml-auto underline"
                         >
-                          Clear
+                          ล้าง
                         </button>
                       </div>
                       {selected && (
                         <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-slate-600 dark:text-slate-400">
-                          <span>Code: <strong className="font-mono">{selected.assetCode}</strong></span>
-                          <span>Site: {selected.site || '-'}</span>
-                          <span>Brand: {selected.brand || '-'}</span>
-                          <span>Model: {selected.model || '-'}</span>
-                          <span>SN: <span className="font-mono">{selected.serialNumber || '-'}</span></span>
-                          <span>Type: {selected.type || '-'}</span>
-                          <span>Building: {selected.building || '-'}</span>
-                          <span>Dept: {selected.department || '-'}</span>
+                          <span>รหัส: <strong className="font-mono">{selected.assetCode}</strong></span>
+                          <span>ไซต์: {selected.site || '-'}</span>
+                          <span>ยี่ห้อ: {selected.brand || '-'}</span>
+                          <span>รุ่น: {selected.model || '-'}</span>
+                          <span>S/N: <span className="font-mono">{selected.serialNumber || '-'}</span></span>
+                          <span>ประเภท: {selected.type || '-'}</span>
+                          <span>อาคาร: {selected.building || '-'}</span>
+                          <span>แผนก: {selected.department || '-'}</span>
                         </div>
                       )}
                     </div>
@@ -1946,19 +1946,19 @@ function CreateWorkOrderDialog({
             )}
 
             <div className="grid gap-1.5">
-              <Label htmlFor="wo-details">DetailsProblem</Label>
+              <Label htmlFor="wo-details">รายละเอียดปัญหา</Label>
               <Textarea
                 id="wo-details"
                 value={form.details}
                 onChange={(e) => setForm((s) => ({ ...s, details: e.target.value }))}
-                placeholder="explain symptom frequency orDataatTechnicianShouldknow"
+                placeholder="อธิบายอาการ ความถี่ หรือข้อมูลที่ช่างควรทราบ"
                 className="min-h-[80px]"
               />
             </div>
 
             <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="wo-priority">priorityUrgent</Label>
+                <Label htmlFor="wo-priority">ความเร่งด่วน</Label>
                 <Select
                   value={form.priority}
                   onValueChange={(v) => setForm((s) => ({ ...s, priority: v }))}
@@ -1977,9 +1977,9 @@ function CreateWorkOrderDialog({
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="wo-pic" className="flex items-center justify-between">
-                  <span>imageBefore (Optional)</span>
+                  <span>รูปก่อนซ่อม (ไม่บังคับ)</span>
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                    {form.picBeforeImages.length}/{MAX_IMAGES_PER_STAGE} image
+                    {form.picBeforeImages.length}/{MAX_IMAGES_PER_STAGE} รูป
                   </span>
                 </Label>
                 <input
@@ -2006,12 +2006,12 @@ function CreateWorkOrderDialog({
                   ) : (
                     <ImageIcon className="h-5 w-5" />
                   )}
-                  AddimageBefore
+                  เพิ่มรูปก่อนซ่อม
                 </Button>
                 <CameraCapture
                   onCapture={(dataUrl) => {
                     if (form.picBeforeImages.length >= MAX_IMAGES_PER_STAGE) {
-                      toast.error(`AddimageHighEnd ${MAX_IMAGES_PER_STAGE} image`)
+                      toast.error(`เพิ่มรูปได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูป`)
                       return
                     }
                     setForm((s) => ({
@@ -2022,11 +2022,11 @@ function CreateWorkOrderDialog({
                       ),
                     }))
                   }}
-                  label="captureImagecamera"
+                  label="ถ่ายรูปจากกล้อง"
                   className="min-h-11 w-full justify-center border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/40"
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  HighEnd {MAX_IMAGES_PER_STAGE} image • compressAuto
+                  สูงสุด {MAX_IMAGES_PER_STAGE} รูป • บีบอัดอัตโนมัติ
                 </p>
                 {form.picBeforeImages.length > 0 && (
                   <div className="flex gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
@@ -2037,7 +2037,7 @@ function CreateWorkOrderDialog({
                       >
                         <img
                           src={src}
-                          alt={`imageBefore ${idx + 1}`}
+                          alt={`รูปก่อนซ่อม ${idx + 1}`}
                           className="h-full w-full object-cover"
                           loading="lazy"
                         />
@@ -2045,7 +2045,7 @@ function CreateWorkOrderDialog({
                           type="button"
                           onClick={() => removePicBefore(idx)}
                           className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-rose-600"
-                          aria-label={`Deleteimageat ${idx + 1}`}
+                          aria-label={`ลบรูปที่ ${idx + 1}`}
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -2067,10 +2067,10 @@ function CreateWorkOrderDialog({
                 </span>
                 <div>
                   <div className="text-sm font-medium">
-                    Special (Has cost)
+                    พิเศษ (มีค่าใช้จ่าย)
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    UsemainAcceptatHaschargeFeeUsepay — AppOtherpullThrough API
+                    ใช้สำหรับงานที่มีค่าใช้จ่ายเพิ่มเติม — แอปอื่นดึงผ่าน API
                   </div>
                 </div>
               </div>
@@ -2079,7 +2079,7 @@ function CreateWorkOrderDialog({
                 onCheckedChange={(v) =>
                   setForm((s) => ({ ...s, isSpecialFee: v }))
                 }
-                aria-label="Special (Has cost)"
+                aria-label="พิเศษ (มีค่าใช้จ่าย)"
               />
             </div>
 
@@ -2089,13 +2089,13 @@ function CreateWorkOrderDialog({
               <div className="grid gap-1 rounded-lg border bg-muted/40 p-3">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                   <ShieldCheck className="h-3.5 w-3.5" />
-                  Reporter (employeeWorkLockin)
+                  ผู้แจ้ง (พนักงานที่ล็อกอิน)
                 </div>
                 <div className="text-sm">
-                  {authUser?.name ?? authUser?.email ?? 'UserLockinCurrent'}
+                  {authUser?.name ?? authUser?.email ?? 'ผู้ใช้ที่ล็อกอินปัจจุบัน'}
                 </div>
                 <div className="text-[11px] text-muted-foreground">
-                  SystemwillUseDataUserLockinasReporter (submissionSource = session)
+                  ระบบจะใช้ข้อมูลผู้ล็อกอินเป็นผู้แจ้ง (submissionSource = session)
                 </div>
               </div>
             ) : (
@@ -2103,13 +2103,13 @@ function CreateWorkOrderDialog({
               <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 {form.isExternal
-                  ? 'Reporter (TechnicianatAccept)'
-                  : 'Reporter (MustConfirmidentityWithContact Directory)'}
+                  ? 'ผู้แจ้ง (ช่างรับแจ้ง)'
+                  : 'ผู้แจ้ง (ต้องยืนยันตัวตนกับสมุดโทรศัพท์)'}
               </div>
               <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="wo-reporter">
-                    NameReporter
+                    ชื่อผู้แจ้ง
                     {!form.isExternal && <span className="text-rose-500"> *</span>}
                   </Label>
                   <Input
@@ -2124,12 +2124,12 @@ function CreateWorkOrderDialog({
                         document.getElementById('wo-tel')?.focus()
                       }
                     }}
-                    placeholder="Name-last name"
+                    placeholder="ชื่อ-นามสกุล"
                   />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="wo-tel">
-                    Phone
+                    โทรศัพท์
                     {!form.isExternal && <span className="text-rose-500"> *</span>}
                   </Label>
                   <div className="relative">
@@ -2153,7 +2153,7 @@ function CreateWorkOrderDialog({
               </div>
               {!form.isExternal && (
                 <div className="grid gap-1.5">
-                  <Label htmlFor="wo-emp">CodeemployeeWork (Optional)</Label>
+                  <Label htmlFor="wo-emp">รหัสพนักงาน (ไม่บังคับ)</Label>
                   <div className="relative">
                     <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -2168,7 +2168,7 @@ function CreateWorkOrderDialog({
                           document.getElementById('wo-details')?.focus()
                         }
                       }}
-                      placeholder="Scanemployee cardWork orPrintCode e.g. EMP001"
+                      placeholder="สแกนบัตรพนักงานหรือพิมพ์รหัส เช่น EMP001"
                       className="pl-8 font-mono text-xs"
                     />
                   </div>
@@ -2176,8 +2176,8 @@ function CreateWorkOrderDialog({
               )}
               {!form.isExternal && (
                 <div className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-                  SystemwillCheckName + PhoneWithContact Directory (ContactDirectory)
-                  IfNomatchwillNoCanSendRepair Ticket
+                  ระบบจะตรวจสอบชื่อ + เบอร์โทรกับสมุดโทรศัพท์ (ContactDirectory)
+                  หากไม่ตรงกันจะส่งใบแจ้งซ่อมไม่ได้
                 </div>
               )}
             </div>
@@ -2195,7 +2195,7 @@ function CreateWorkOrderDialog({
             disabled={saving}
             className="min-h-11 w-full sm:w-auto"
           >
-            Cancel
+            ยกเลิก
           </Button>
           <Button type="button"
             onClick={onSubmit}
@@ -2207,7 +2207,7 @@ function CreateWorkOrderDialog({
             ) : (
               <Plus className="h-4 w-4" />
             )}
-            SaveRepair Ticket
+            บันทึกใบแจ้งซ่อม
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2268,19 +2268,19 @@ function WorkOrderDetailDialog({
         ) : detailQuery.isError ? (
           // Defensive fix: show error state instead of blank screen
           <div className="space-y-3 p-6">
-            <div className="text-sm font-medium text-rose-600">LoadWork OrderNosuccessfully</div>
+            <div className="text-sm font-medium text-rose-600">โหลดใบงานไม่สำเร็จ</div>
             <div className="text-xs text-muted-foreground">
               {detailQuery.error instanceof Error
                 ? detailQuery.error.message
-                : 'errorErrorsomeLike — tryCloseandCloseNew'}
+                : 'เกิดข้อผิดพลาดบางอย่าง — ลองปิดแล้วเปิดใหม่'}
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => detailQuery.refetch()}>
-              tryNew
+              ลองใหม่
             </Button>
           </div>
         ) : !wo ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            Not foundWork Order
+            ไม่พบใบงาน
           </div>
         ) : (
           <WorkOrderDetailContent
@@ -2533,7 +2533,7 @@ function WorkOrderDetailContent({
             : afterImages.length
       const remaining = MAX_IMAGES_PER_STAGE - existingCount
       if (remaining <= 0) {
-        toast.error(`AddimageHighEnd ${MAX_IMAGES_PER_STAGE} imageper stepAt`)
+        toast.error(`เพิ่มรูปได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูปต่อขั้นตอน`)
         return
       }
       const list = Array.from(files).slice(0, remaining)
@@ -2553,17 +2553,17 @@ function WorkOrderDetailContent({
           })
           if (!res.ok) {
             const j = await res.json().catch(() => ({}))
-            throw new Error(j.error ?? 'UploadimageNosuccessfully')
+            throw new Error(j.error ?? 'อัปโหลดรูปภาพไม่สำเร็จ')
           }
           added++
         } catch (err) {
           toast.error(
-            err instanceof Error ? err.message : 'UploadimageNosuccessfully',
+            err instanceof Error ? err.message : 'อัปโหลดรูปภาพไม่สำเร็จ',
           )
         }
       }
       if (added > 0) {
-        toast.success(`Addimage ${stage}  ${added} image`)
+        toast.success(`เพิ่มรูปแล้ว ${added} รูป (${stage})`)
         qc.invalidateQueries({ queryKey: ['wo-images', wo.id] })
         onMutated()
       }
@@ -2589,7 +2589,7 @@ function WorkOrderDetailContent({
           : afterImages.length
     const remaining = MAX_IMAGES_PER_STAGE - existingCount
     if (remaining <= 0) {
-      toast.error(`AddimageHighEnd ${MAX_IMAGES_PER_STAGE} imageper stepAt`)
+      toast.error(`เพิ่มรูปได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูปต่อขั้นตอน`)
       return
     }
     try {
@@ -2607,13 +2607,13 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'UploadimageNosuccessfully')
+        throw new Error(j.error ?? 'อัปโหลดรูปภาพไม่สำเร็จ')
       }
-      toast.success(`Addimage ${stage} fromcamera`)
+      toast.success(`เพิ่มรูปจากกล้องแล้ว (${stage})`)
       qc.invalidateQueries({ queryKey: ['wo-images', wo.id] })
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'UploadimageNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'อัปโหลดรูปภาพไม่สำเร็จ')
     } finally {
       setImgBusy(false)
       setActiveStage(null)
@@ -2624,7 +2624,7 @@ function WorkOrderDetailContent({
     // Legacy mirror images can't be deleted through this endpoint — they live
     // on the WorkOrder row itself.
     if (img.id.startsWith('legacy-')) {
-      toast.error('imageasDataOriginal — UseEditWork OrderforDelete')
+      toast.error('รูปนี้เป็นข้อมูลต้นฉบับ — ใช้การแก้ไขใบงานเพื่อลบ')
       return
     }
     setDeleteImageTarget(img)
@@ -2641,13 +2641,13 @@ function WorkOrderDetailContent({
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'DeleteimageNosuccessfully')
+        throw new Error(j.error ?? 'ลบรูปภาพไม่สำเร็จ')
       }
-      toast.success('Deleteimage')
+      toast.success('ลบรูปแล้ว')
       qc.invalidateQueries({ queryKey: ['wo-images', wo.id] })
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'DeleteimageNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'ลบรูปภาพไม่สำเร็จ')
     } finally {
       setDeletingImgId(null)
       setDeleteImageTarget(null)
@@ -2796,7 +2796,7 @@ function WorkOrderDetailContent({
 
   async function handleAssign() {
     if (!techName.trim()) {
-      toast.error('Please specifyNameTechnician')
+      toast.error('กรุณาระบุชื่อช่าง')
       return
     }
     try {
@@ -2812,13 +2812,13 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'AssignNosuccessfully')
+        throw new Error(j.error ?? 'มอบหมายงานไม่สำเร็จ')
       }
-      toast.success(`Assignto ${techName.trim()} `)
+      toast.success(`มอบหมายให้ ${techName.trim()} แล้ว`)
       setAssignOpen(false)
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'AssignNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'มอบหมายงานไม่สำเร็จ')
     } finally {
       setAssigning(false)
     }
@@ -2841,12 +2841,12 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'ApproveNosuccessfully')
+        throw new Error(j.error ?? 'อนุมัติไม่สำเร็จ')
       }
-      toast.success('ApproveWork Order — into queueNormal')
+      toast.success('อนุมัติใบงานแล้ว — เข้าคิวปกติ')
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ApproveNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ')
     } finally {
       setApproving(false)
     }
@@ -2864,19 +2864,19 @@ function WorkOrderDetailContent({
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           active: true,
-          note: unlockNote.trim() || 'ReduceLockforEditDataatError',
+          note: unlockNote.trim() || 'ปลดล็อกเพื่อแก้ไขข้อมูลที่ผิดพลาด',
         }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'ReduceLockNosuccessfully')
+        throw new Error(j.error ?? 'ปลดล็อกไม่สำเร็จ')
       }
-      toast.success('ReduceLockEdit — CanEditWork Order')
+      toast.success('ปลดล็อกการแก้ไขแล้ว — สามารถแก้ไขใบงานได้')
       setUnlockOpen(false)
       setUnlockNote('')
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ReduceLockNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'ปลดล็อกไม่สำเร็จ')
     } finally {
       setUnlocking(false)
     }
@@ -2889,7 +2889,7 @@ function WorkOrderDetailContent({
       const dataUrl = await compressImage(file)
       setPicAfter(dataUrl)
     } catch {
-      toast.error('readFileimageNosuccessfully')
+      toast.error('อ่านไฟล์รูปภาพไม่สำเร็จ')
     } finally {
       if (picAfterInputRef.current) picAfterInputRef.current.value = ''
     }
@@ -2898,7 +2898,7 @@ function WorkOrderDetailContent({
   // ── Complete — Step 2 parts helpers (WithdrawPartsAtClose) ──
   function addCompletePart(item: PartsStockItem) {
     if (completePartsLines.some((l) => l.productCode === item.productCode)) {
-      toast.error(`${item.productCode} HasAtinitems`)
+      toast.error(`${item.productCode} มีอยู่ในรายการแล้ว`)
       return
     }
     setCompletePartsLines((prev) => [
@@ -2963,7 +2963,7 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'CloseNosuccessfully')
+        throw new Error(j.error ?? 'ปิดงานไม่สำเร็จ')
       }
       const json = await res.json().catch(() => ({}))
       const partsCreated: number | undefined = json?.partsCreated
@@ -2972,11 +2972,11 @@ function WorkOrderDetailContent({
       if (partsCreated && partsCreated > 0) {
         if (newStatus === 'WAITING_PARTS' || autoApproved === false) {
           toast.success(
-            `AddRequestWithdrawParts ${partsCreated} items — Work OrderChangeStatusas "PendingParts"`,
+            `เพิ่มคำขอเบิกอะไหล่ ${partsCreated} รายการ — สถานะใบงานเปลี่ยนเป็น "รออะไหล่"`,
           )
         } else {
           toast.success(
-            `Close readyWithdrawPartsAuto ${partsCreated} items`,
+            `พร้อมปิดงาน — เบิกอะไหล่อัตโนมัติ ${partsCreated} รายการ`,
           )
         }
       } else {
@@ -2990,7 +2990,7 @@ function WorkOrderDetailContent({
       qc.invalidateQueries({ queryKey: ['stock-items'] })
       qc.invalidateQueries({ queryKey: ['stock-pending'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'CloseNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'ปิดงานไม่สำเร็จ')
     } finally {
       setCompleting(false)
     }
@@ -2998,7 +2998,7 @@ function WorkOrderDetailContent({
 
   async function handleCancel() {
     if (!cancelReason.trim()) {
-      toast.error('Please specifycauseResultinCancel')
+      toast.error('กรุณาระบุเหตุผลในการยกเลิก')
       return
     }
     try {
@@ -3013,14 +3013,14 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'CancelNosuccessfully')
+        throw new Error(j.error ?? 'ยกเลิกไม่สำเร็จ')
       }
-      toast.success('CancelWork Order')
+      toast.success('ยกเลิกใบงานแล้ว')
       setCancelOpen(false)
       setCancelReason('')
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'CancelNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'ยกเลิกไม่สำเร็จ')
     } finally {
       setCanceling(false)
     }
@@ -3028,7 +3028,7 @@ function WorkOrderDetailContent({
 
   async function handleReporterEdit() {
     if (!reporterEdit.verifyName.trim() || !reporterEdit.verifyPhone.trim()) {
-      toast.error('MustSpecifyNameandPhoneofReporterforConfirmidentity')
+      toast.error('ต้องระบุชื่อและเบอร์โทรของผู้แจ้งเพื่อยืนยันตัวตน')
       return
     }
     try {
@@ -3049,13 +3049,13 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'EditNosuccessfully')
+        throw new Error(j.error ?? 'แก้ไขไม่สำเร็จ')
       }
-      toast.success('EditWork Order')
+      toast.success('แก้ไขใบงานแล้ว')
       setReporterEditOpen(false)
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'EditNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'แก้ไขไม่สำเร็จ')
     } finally {
       setReporterEditSaving(false)
     }
@@ -3077,12 +3077,12 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'SendMessageNosuccessfully')
+        throw new Error(j.error ?? 'ส่งข้อความไม่สำเร็จ')
       }
       setChatText('')
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'SendMessageNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'ส่งข้อความไม่สำเร็จ')
     } finally {
       setSendingMsg(false)
     }
@@ -3122,7 +3122,7 @@ function WorkOrderDetailContent({
   function addPartsLine(item: PartsStockItem) {
     // Skip if already in list
     if (partsLines.some((l) => l.productCode === item.productCode)) {
-      toast.error(`${item.productCode} HasAtinitems`)
+      toast.error(`${item.productCode} มีอยู่ในรายการแล้ว`)
       return
     }
     const d = defaultUsageForItem(item)
@@ -3228,7 +3228,7 @@ function WorkOrderDetailContent({
       return false
     })
     if (valid.length === 0) {
-      toast.error('MustAddLikeless 1 itemsParts readyQuantityatcorrectMust')
+      toast.error('ต้องเพิ่มอะไหล่อย่างน้อย 1 รายการ โดยระบุจำนวนให้ถูกต้อง')
       return
     }
     try {
@@ -3256,21 +3256,21 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'WithdrawPartsNosuccessfully')
+        throw new Error(j.error ?? 'เบิกอะไหล่ไม่สำเร็จ')
       }
       const json = await res.json()
       const createdCount = json.data?.created ?? valid.length
       const isIdempotent = json.data?.idempotent === true
       toast.success(
-        `${isIdempotent ? '(duplicate — UsedataOriginal)' : `CreateRequestWithdrawParts ${createdCount} items`} — StatusWork Order: ${
-          json.data?.workOrderStatus === 'WAITING_PARTS' ? 'PendingParts' : json.data?.workOrderStatus
+        `${isIdempotent ? '(รายการซ้ำ — ใช้ข้อมูลเดิม)' : `สร้างคำขอเบิกอะไหล่ ${createdCount} รายการ`} — สถานะใบงาน: ${
+          json.data?.workOrderStatus === 'WAITING_PARTS' ? 'รออะไหล่' : json.data?.workOrderStatus
         }`,
       )
       setPartsOpen(false)
       onMutated()
       qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'WithdrawPartsNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'เบิกอะไหล่ไม่สำเร็จ')
     } finally {
       setPartsSaving(false)
     }
@@ -3286,15 +3286,15 @@ function WorkOrderDetailContent({
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'ApproveNosuccessfully')
+        throw new Error(j.error ?? 'อนุมัติไม่สำเร็จ')
       }
-      toast.success('ApproveWithdrawParts')
+      toast.success('อนุมัติเบิกอะไหล่แล้ว')
       qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
       qc.invalidateQueries({ queryKey: ['stock-items'] })
       qc.invalidateQueries({ queryKey: ['stock-pending'] })
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ApproveNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ')
     } finally {
       setApprovingTxnId(null)
     }
@@ -3302,7 +3302,7 @@ function WorkOrderDetailContent({
 
   async function handleRejectPart(txn: PartsTransaction) {
     if (!rejectReason.trim()) {
-      toast.error('Please specifycauseResultinReject')
+      toast.error('กรุณาระบุเหตุผลในการปฏิเสธ')
       return
     }
     try {
@@ -3321,16 +3321,16 @@ function WorkOrderDetailContent({
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'RejectNosuccessfully')
+        throw new Error(j.error ?? 'ปฏิเสธไม่สำเร็จ')
       }
-      toast.success('RejectRequestWithdrawParts')
+      toast.success('ปฏิเสธคำขอเบิกอะไหล่แล้ว')
       setRejectingTxnId(null)
       setRejectReason('')
       qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
       qc.invalidateQueries({ queryKey: ['stock-pending'] })
       onMutated()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'RejectNosuccessfully')
+      toast.error(e instanceof Error ? e.message : 'ปฏิเสธไม่สำเร็จ')
     } finally {
       setRejectingTxnId(null)
     }
@@ -3338,10 +3338,10 @@ function WorkOrderDetailContent({
 
   // Build timeline from key WO timestamps + messages
   const timeline: Array<{ key: string; label: string; at: string | null; tone: 'info' | 'success' | 'warning' | 'danger' | 'muted' }> = [
-    { key: 'created', label: 'Repair RequestNew', at: wo.createdAt, tone: 'info' },
-    { key: 'assigned', label: wo.assignedTo ? `Assignto ${wo.assignedTo}` : 'Assign', at: wo.assignedAt, tone: wo.assignedAt ? 'info' : 'muted' },
-    { key: 'completed', label: 'common.close', at: wo.workCompletedAt ?? wo.closedAt, tone: wo.workCompletedAt ? 'success' : 'muted' },
-    { key: 'cancelled', label: wo.cancelReason ? `Cancel — ${wo.cancelReason}` : 'common.cancel', at: wo.canceledAt, tone: wo.canceledAt ? 'danger' : 'muted' },
+    { key: 'created', label: 'แจ้งซ่อม', at: wo.createdAt, tone: 'info' },
+    { key: 'assigned', label: wo.assignedTo ? `มอบหมายให้ ${wo.assignedTo}` : 'มอบหมายงาน', at: wo.assignedAt, tone: wo.assignedAt ? 'info' : 'muted' },
+    { key: 'completed', label: 'ปิดงาน', at: wo.workCompletedAt ?? wo.closedAt, tone: wo.workCompletedAt ? 'success' : 'muted' },
+    { key: 'cancelled', label: wo.cancelReason ? `ยกเลิก — ${wo.cancelReason}` : 'ยกเลิก', at: wo.canceledAt, tone: wo.canceledAt ? 'danger' : 'muted' },
   ].filter((t) => t.at !== null || t.key === 'created')
 
   return (
@@ -3360,7 +3360,7 @@ function WorkOrderDetailContent({
                 className="border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
                 variant="outline"
               >
-                Workoutside
+                งานภายนอก
               </Badge>
             )}
             {wo.isSpecialFee && (
@@ -3368,7 +3368,7 @@ function WorkOrderDetailContent({
                 className="border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
                 variant="outline"
               >
-                💰 Special (Has cost)
+                💰 พิเศษ (มีค่าใช้จ่าย)
               </Badge>
             )}
             <Badge
@@ -3382,12 +3382,12 @@ function WorkOrderDetailContent({
               variant="outline"
               size="sm"
               onClick={() => setPrintOpen(true)}
-              aria-label="PrintWork Order"
-              title="PrintWork Order"
+              aria-label="พิมพ์ใบงาน"
+              title="พิมพ์ใบงาน"
               className="h-8 gap-1 px-2.5 text-xs"
             >
               <Printer className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">PrintWork Order</span>
+              <span className="hidden sm:inline">พิมพ์ใบงาน</span>
             </Button>
             <DialogClose
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 sm:hidden"
@@ -3411,7 +3411,7 @@ function WorkOrderDetailContent({
             {wo.priority}
           </Badge>
           <span className="text-[10px] uppercase tracking-wide">
-            ({wo.submissionSource === 'session' ? 'Lockin' : 'guest'})
+            ({wo.submissionSource === 'session' ? 'ผู้ใช้ในระบบ' : 'บุคคลทั่วไป'})
           </span>
         </div>
       </div>
@@ -3424,24 +3424,24 @@ function WorkOrderDetailContent({
             <div className="rounded-lg border border-teal-200 bg-teal-50/60 p-3 dark:border-teal-800 dark:bg-teal-950/30">
               <div className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-teal-700 dark:text-teal-300">
                 <PackageOpen className="h-3.5 w-3.5" />
-                DataCustomerexternal
+                ข้อมูลลูกค้าภายนอก
               </div>
               <div className="grid grid-cols-1 gap-1.5 text-sm sm:grid-cols-2">
                 {external.clientName && (
                   <div>
-                    <span className="text-[10px] uppercase text-muted-foreground">Customer</span>
+                    <span className="text-[10px] uppercase text-muted-foreground">ลูกค้า</span>
                     <div className="font-medium">{external.clientName}</div>
                   </div>
                 )}
                 {external.place && (
                   <div>
-                    <span className="text-[10px] uppercase text-muted-foreground">placeat</span>
+                    <span className="text-[10px] uppercase text-muted-foreground">สถานที่</span>
                     <div className="font-medium">{external.place}</div>
                   </div>
                 )}
                 {external.contactPhone && (
                   <div>
-                    <span className="text-[10px] uppercase text-muted-foreground">contact phone</span>
+                    <span className="text-[10px] uppercase text-muted-foreground">เบอร์ติดต่อ</span>
                     <div className="font-medium">{external.contactPhone}</div>
                   </div>
                 )}
@@ -3468,68 +3468,68 @@ function WorkOrderDetailContent({
               <>
                 <InfoRow
                   icon={<MapPin className="h-4 w-4" />}
-                  label="Building / division"
+                  label="อาคาร / แผนก"
                   value={wo.building ?? '—'}
                 />
                 <InfoRow
                   icon={<MapPin className="h-4 w-4" />}
-                  label="Location"
+                  label="ตำแหน่ง / ห้อง"
                   value={wo.location ?? '—'}
                 />
               </>
             )}
             <InfoRow
               icon={<User className="h-4 w-4" />}
-              label="Reporter"
+              label="ผู้แจ้ง"
               value={wo.reporterName ?? '—'}
             />
             <InfoRow
               icon={<Phone className="h-4 w-4" />}
-              label="Phone"
+              label="โทรศัพท์"
               value={wo.tel ?? '—'}
             />
             {wo.employeeCode && (
               <InfoRow
                 icon={<Hash className="h-4 w-4" />}
-                label="CodeemployeeWork"
+                label="รหัสพนักงาน"
                 value={wo.employeeCode}
               />
             )}
             {wo.device && (
               <InfoRow
                 icon={<ClipboardList className="h-4 w-4" />}
-                label="No.RegistrationDevice"
+                label="รหัสทะเบียนอุปกรณ์"
                 value={`${wo.device.assetCode} — ${wo.device.name}`}
               />
             )}
             <InfoRow
               icon={<User className="h-4 w-4" />}
-              label="TechnicianPersonReceivewronglike"
+              label="ช่างผู้รับผิดชอบ"
               value={wo.assignedTo ?? '—'}
             />
             <InfoRow
               icon={<CalendarClock className="h-4 w-4" />}
-              label="AssignWhen"
+              label="เวลาที่มอบหมาย"
               value={wo.assignedAt ? formatDateTime(wo.assignedAt) : '—'}
             />
             {wo.assignedBy && (
               <InfoRow
                 icon={<User className="h-4 w-4" />}
-                label="Assignby"
+                label="มอบหมายโดย"
                 value={wo.assignedBy}
               />
             )}
             {wo.workCompletedAt && (
               <InfoRow
                 icon={<CheckCircle2 className="h-4 w-4" />}
-                label="CloseWhen"
+                label="เวลาที่เสร็จงาน"
                 value={formatDateTime(wo.workCompletedAt)}
               />
             )}
             {wo.closedAt && wo.closedAt !== wo.workCompletedAt && (
               <InfoRow
                 icon={<CheckCircle2 className="h-4 w-4" />}
-                label="CloseaboutWhen"
+                label="เวลาที่ปิดงาน"
                 value={formatDateTime(wo.closedAt)}
               />
             )}
@@ -3539,7 +3539,7 @@ function WorkOrderDetailContent({
           {wo.assignmentNote && (
             <div className="rounded-lg border bg-muted/40 p-3 text-sm">
               <div className="mb-1 text-xs font-semibold text-muted-foreground">
-                RemarkAssign
+                หมายเหตุการมอบหมาย
               </div>
               <p className="whitespace-pre-wrap">{wo.assignmentNote}</p>
             </div>
@@ -3549,7 +3549,7 @@ function WorkOrderDetailContent({
           {wo.details && (
             <div className="rounded-lg border bg-muted/40 p-3">
               <div className="mb-1 text-xs font-semibold text-muted-foreground">
-                DetailsProblem
+                รายละเอียดปัญหา
               </div>
               <p className="whitespace-pre-wrap text-sm">{wo.details}</p>
             </div>
@@ -3562,7 +3562,7 @@ function WorkOrderDetailContent({
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/40">
                   <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    ResultEdit
+                    ผลการซ่อม
                     {wo.resolutionGroup && (
                       <span className="ml-1 rounded bg-emerald-200/60 px-1.5 py-0.5 text-[10px] dark:bg-emerald-900/60">
                         {wo.resolutionGroup}
@@ -3576,7 +3576,7 @@ function WorkOrderDetailContent({
                 <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm dark:border-orange-800 dark:bg-orange-950/40">
                   <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-orange-700 dark:text-orange-300">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    RemarkTechnician
+                    หมายเหตุช่างเทคนิค
                   </div>
                   <p className="whitespace-pre-wrap">{wo.detailsAdmin}</p>
                 </div>
@@ -3589,7 +3589,7 @@ function WorkOrderDetailContent({
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm dark:border-rose-800 dark:bg-rose-950/40">
               <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-rose-700 dark:text-rose-300">
                 <XCircle className="h-3.5 w-3.5" />
-                causeResultCancel
+                เหตุผลที่ยกเลิก
               </div>
               <p className="whitespace-pre-wrap">{wo.cancelReason}</p>
             </div>
@@ -3600,12 +3600,12 @@ function WorkOrderDetailContent({
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950/40">
               <div className="mb-1 flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
                 <Edit3 className="h-3.5 w-3.5" />
-                ReduceLocktoReporterEdit
+                ปลดล็อกให้ผู้แจ้งแก้ไข
               </div>
               <div>
-                ReduceLockby: {wo.editUnlockBy ?? '—'} • {wo.editUnlockAt ? formatDateTime(wo.editUnlockAt) : '—'}
+                ปลดล็อกโดย: {wo.editUnlockBy ?? '—'} • {wo.editUnlockAt ? formatDateTime(wo.editUnlockAt) : '—'}
               </div>
-              {wo.editUnlockNote && <div className="mt-0.5">Remark: {wo.editUnlockNote}</div>}
+              {wo.editUnlockNote && <div className="mt-0.5">หมายเหตุ: {wo.editUnlockNote}</div>}
             </div>
           )}
 
@@ -3633,11 +3633,11 @@ function WorkOrderDetailContent({
                   <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="flex-1">
                     <div className="font-semibold text-amber-800 dark:text-amber-300">
-                      SubjectoftenMustWithdrawParts
+                      ประเด็นที่พบบ่อย — ต้องเบิกอะไหล่
                     </div>
                     <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
-                      CheckandWithdrawPartsatMustUse (Ink/Cartridge/sub/Drum) — SpecifyQuantityatUsereal
-                      IfUsefrombottlesatClose toSelect &quot;UsebottlesClose&quot; (NocutStock)
+                      ตรวจสอบและเบิกอะไหล่ที่ต้องใช้ (หมึก/ตลับหมึก/ผงหมึก/ดรัม) — ระบุจำนวนตามที่ใช้จริง
+                      หากใช้จากขวดที่เปิดแล้ว ให้เลือก &quot;ใช้ขวดที่เปิดแล้ว&quot; (ไม่ตัดสต๊อก)
                     </div>
                   </div>
                   <Button type="button"
@@ -3646,7 +3646,7 @@ function WorkOrderDetailContent({
                     className="h-7 bg-amber-600 px-2 text-[11px] hover:bg-amber-700"
                   >
                     <Package className="mr-1 h-3 w-3" />
-                    WithdrawParts
+                    เบิกอะไหล่
                   </Button>
                 </div>
               </div>
@@ -3658,10 +3658,10 @@ function WorkOrderDetailContent({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                 <Box className="h-3.5 w-3.5" />
-                itemsWithdrawParts
+                รายการเบิกอะไหล่
                 {partsSummary && partsSummary.total > 0 && (
                   <Badge variant="outline" className="ml-1 text-[10px]">
-                    Pending {partsSummary.pending} • Approve {partsSummary.approved} • Reject {partsSummary.rejected}
+                    รออนุมัติ {partsSummary.pending} • อนุมัติแล้ว {partsSummary.approved} • ปฏิเสธ {partsSummary.rejected}
                   </Badge>
                 )}
               </div>
@@ -3673,7 +3673,7 @@ function WorkOrderDetailContent({
                   className="h-7 border-purple-300 px-2 text-[11px] text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/40"
                 >
                   <Package className="mr-1 h-3 w-3" />
-                  WithdrawParts
+                  เบิกอะไหล่
                 </Button>
               )}
             </div>
@@ -3682,8 +3682,8 @@ function WorkOrderDetailContent({
               <Skeleton className="h-16 w-full" />
             ) : partsList.length === 0 ? (
               <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
-                StillNoneitemsWithdrawPartsForWork Order
-                {canRequestParts && ' — Clickbutton "WithdrawParts" forCreateRequest'}
+                ยังไม่มีรายการเบิกอะไหล่สำหรับใบงานนี้
+                {canRequestParts && ' — กดปุ่ม "เบิกอะไหล่" เพื่อสร้างคำขอ'}
               </p>
             ) : (
               <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border bg-card p-2">
@@ -3706,13 +3706,13 @@ function WorkOrderDetailContent({
                             </span>
                           </div>
                           <div className="mt-0.5 text-[11px] text-muted-foreground">
-                            No.at: {p.txnNumber ?? '—'} • Quantity:{' '}
+                            เลขที่: {p.txnNumber ?? '—'} • จำนวน:{' '}
                             <span className="font-semibold text-foreground">
                               {p.quantity} {p.unit ?? ''}
                             </span>
                             {stockItem && (
                               <>
-                                {' '}• RemaininginStock:{' '}
+                                {' '}• คงเหลือในสต๊อก:{' '}
                                 <span
                                   className={
                                     stockItem.quantity < p.quantity
@@ -3727,17 +3727,17 @@ function WorkOrderDetailContent({
                           </div>
                           {p.remark && (
                             <div className="mt-0.5 text-[11px] text-muted-foreground">
-                              Remark: {p.remark}
+                              หมายเหตุ: {p.remark}
                             </div>
                           )}
                           {p.rejectReason && (
                             <div className="mt-0.5 text-[11px] text-rose-600 dark:text-rose-400">
-                              causeResultatReject: {p.rejectReason}
+                              สาเหตุที่ปฏิเสธ: {p.rejectReason}
                             </div>
                           )}
                           {p.approver && (
                             <div className="mt-0.5 text-[10px] text-muted-foreground">
-                              by: {p.approver}
+                              โดย: {p.approver}
                               {p.approvedAt && ` • ${formatDateTime(p.approvedAt)}`}
                             </div>
                           )}
@@ -3758,14 +3758,14 @@ function WorkOrderDetailContent({
                             ) : (
                               <Check className="mr-1 h-3 w-3" />
                             )}
-                            Approve
+                            อนุมัติ
                           </Button>
                           {rejectingTxnId === p.id ? (
                             <div className="flex flex-1 items-center gap-1">
                               <Input
                                 value={rejectReason}
                                 onChange={(e) => setRejectReason(e.target.value)}
-                                placeholder="causeResultatReject"
+                                placeholder="สาเหตุที่ปฏิเสธ"
                                 className="h-7 flex-1 text-[11px]"
                                 autoFocus
                               />
@@ -3776,7 +3776,7 @@ function WorkOrderDetailContent({
                                 disabled={!rejectReason.trim()}
                                 className="h-7 border-rose-300 px-2 text-[11px] text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40"
                               >
-                                Confirm
+                                ยืนยัน
                               </Button>
                               <Button type="button"
                                 size="sm"
@@ -3787,7 +3787,7 @@ function WorkOrderDetailContent({
                                 }}
                                 className="h-7 px-2 text-[11px]"
                               >
-                                Cancel
+                                ยกเลิก
                               </Button>
                             </div>
                           ) : (
@@ -3801,7 +3801,7 @@ function WorkOrderDetailContent({
                               className="h-7 border-rose-300 px-2 text-[11px] text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40"
                             >
                               <XCircle className="mr-1 h-3 w-3" />
-                              Reject
+                              ปฏิเสธ
                             </Button>
                           )}
                         </div>
@@ -3813,7 +3813,7 @@ function WorkOrderDetailContent({
             )}
             {partsSummary && partsSummary.pending > 0 && (
               <div className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-                ⚠️ StillCloseNo — HasRequestWithdrawParts {partsSummary.pending} itemsatPending Approval
+                ⚠️ ยังปิดงานไม่ได้ — มีคำขอเบิกอะไหล่ {partsSummary.pending} รายการรอการอนุมัติ
               </div>
             )}
           </div>
@@ -3822,7 +3822,7 @@ function WorkOrderDetailContent({
           <div className="space-y-3">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
               <ImageIcon className="h-3.5 w-3.5" />
-              imageImageBystepAt
+              รูปภาพแยกตามขั้นตอน
               {imagesQuery.isFetching && (
                 <RefreshCw className="ml-1 h-3 w-3 animate-spin" />
               )}
@@ -3840,7 +3840,7 @@ function WorkOrderDetailContent({
               aria-hidden
             />
             <WoImageStageGroup
-              label="Before"
+              label="ก่อนซ่อม"
               stageKey="before"
               images={beforeImages}
               onAdd={() => triggerUpload('before')}
@@ -3852,7 +3852,7 @@ function WorkOrderDetailContent({
               canAdd={true}
             />
             <WoImageStageGroup
-              label="frontWork / DuringRepair"
+              label="ระหว่างซ่อม"
               stageKey="onsite"
               images={onsiteImages}
               onAdd={() => triggerUpload('onsite')}
@@ -3864,7 +3864,7 @@ function WorkOrderDetailContent({
               canAdd={true}
             />
             <WoImageStageGroup
-              label="AfterDone"
+              label="หลังซ่อม"
               stageKey="after"
               images={afterImages}
               onAdd={() => triggerUpload('after')}
@@ -3880,7 +3880,7 @@ function WorkOrderDetailContent({
           {/* Timeline */}
           <div className="space-y-2">
             <div className="text-xs font-semibold text-muted-foreground">
-              timeLINE
+              ไทม์ไลน์
             </div>
             <ol className="relative space-y-3 border-l-2 border-muted pl-4">
               {timeline.map((t) => (
@@ -3913,11 +3913,11 @@ function WorkOrderDetailContent({
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
               <MessageSquare className="h-3.5 w-3.5" />
-              Message ({messages.length})
+              ข้อความ ({messages.length})
             </div>
             {messages.length === 0 ? (
               <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
-                StillNoneMessageinWork Order
+                ยังไม่มีข้อความในใบงานนี้
               </p>
             ) : (
               <div className="min-h-[180px] max-h-80 space-y-2 overflow-y-auto rounded-md border bg-muted/30 p-3">
@@ -3960,7 +3960,7 @@ function WorkOrderDetailContent({
                 <Input
                   value={chatText}
                   onChange={(e) => setChatText(e.target.value)}
-                  placeholder="PrintMessage..."
+                  placeholder="พิมพ์ข้อความ..."
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
@@ -4004,7 +4004,7 @@ function WorkOrderDetailContent({
             ) : (
               <ShieldCheck className="h-4 w-4" />
             )}
-            Approve
+            อนุมัติ
           </Button>
         )}
         {canComplete && (
@@ -4014,7 +4014,7 @@ function WorkOrderDetailContent({
             className="order-1 min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto"
           >
             <CheckCircle2 className="h-4 w-4" />
-            Close
+            ปิดงาน
           </Button>
         )}
         {canAssign && (
@@ -4025,7 +4025,7 @@ function WorkOrderDetailContent({
             className="order-2 min-h-11 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950"
           >
             <User className="h-4 w-4" />
-            {wo.assignedTo ? 'ChangeTechnician' : 'AssignTechnician'}
+            {wo.assignedTo ? 'เปลี่ยนช่างซ่อม' : 'มอบหมายช่างซ่อม'}
           </Button>
         )}
         {canRequestParts && (
@@ -4036,7 +4036,7 @@ function WorkOrderDetailContent({
             className="order-3 min-h-11 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950"
           >
             <Package className="h-4 w-4" />
-            WithdrawParts
+            เบิกอะไหล่
           </Button>
         )}
         {canCancel && (
@@ -4047,7 +4047,7 @@ function WorkOrderDetailContent({
             className="order-4 min-h-11 border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
           >
             <XCircle className="h-4 w-4" />
-            Cancel
+            ยกเลิก
           </Button>
         )}
         <Button type="button"
@@ -4057,8 +4057,8 @@ function WorkOrderDetailContent({
           className="order-5 min-h-11 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
         >
           <Printer className="h-4 w-4" />
-          <span className="hidden sm:inline">PrintWork Order</span>
-          <span className="sm:hidden">Print</span>
+          <span className="hidden sm:inline">พิมพ์ใบงาน</span>
+          <span className="sm:hidden">พิมพ์</span>
         </Button>
         <Button type="button"
           size="sm"
@@ -4070,10 +4070,10 @@ function WorkOrderDetailContent({
             window.open(`/api/work-orders/${wo.id}/print-sheet${qs}`, '_blank', 'noopener,noreferrer')
           }}
           className="order-6 min-h-11 border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-300 dark:hover:bg-teal-950"
-          title="PrintWork OrderTechnician (compact sheet with QR code)"
+          title="พิมพ์ใบงานช่าง (แผ่นข้อมูลย่อ พร้อมคิวอาร์โคด)"
         >
           <Printer className="h-4 w-4" />
-          <span className="hidden sm:inline">Work OrderTechnician (QR)</span>
+          <span className="hidden sm:inline">ใบงานช่าง (QR)</span>
           <span className="sm:hidden">QR</span>
         </Button>
         {canReporterEdit && (
@@ -4084,8 +4084,8 @@ function WorkOrderDetailContent({
             className="order-7 min-h-11 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
           >
             <Edit3 className="h-4 w-4" />
-            <span className="hidden sm:inline">ReporterEdit</span>
-            <span className="sm:hidden">Edit</span>
+            <span className="hidden sm:inline">แก้ไขผู้แจ้ง</span>
+            <span className="sm:hidden">แก้ไข</span>
           </Button>
         )}
         {/* ── Admin-only: unlock terminal WO for editing (Task ID: UX-GAPS-3-ITEMS) ── */}
@@ -4096,11 +4096,11 @@ function WorkOrderDetailContent({
             variant="outline"
             onClick={() => setUnlockOpen(true)}
             className="order-7 min-h-11 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
-            title="ReduceLockEdit (admin only)"
+            title="ปลดล็อกเพื่อแก้ไข (สำหรับแอดมิน)"
           >
             <Unlock className="h-4 w-4" />
-            <span className="hidden sm:inline">ReduceLockEdit</span>
-            <span className="sm:hidden">ReduceLock</span>
+            <span className="hidden sm:inline">ปลดล็อกเพื่อแก้ไข</span>
+            <span className="sm:hidden">ปลดล็อก</span>
           </Button>
         )}
         {/* Spacer: order-8 puts it AFTER the action buttons (order-1..order-7)
@@ -4110,7 +4110,7 @@ function WorkOrderDetailContent({
             could expand across a blank first flex line. */}
         <div className="order-8 flex-1" />
         <Button type="button" size="sm" variant="ghost" onClick={onClose} className="order-last min-h-11">
-          Close
+          ปิด
         </Button>
       </div>
 
@@ -4118,35 +4118,35 @@ function WorkOrderDetailContent({
       <AlertDialog open={assignOpen} onOpenChange={setAssignOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>AssignTechnician</AlertDialogTitle>
+            <AlertDialogTitle>มอบหมายช่างซ่อม</AlertDialogTitle>
             <AlertDialogDescription>
-              SpecifyNameTechnicianatwillReceivewronglikeWork Order {wo.woNumber}
+              ระบุชื่อช่างที่จะรับผิดชอบใบงาน {wo.woNumber}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3 py-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="tech-name">NameTechnician</Label>
+              <Label htmlFor="tech-name">ชื่อช่าง</Label>
               <Input
                 id="tech-name"
                 value={techName}
                 onChange={(e) => setTechName(e.target.value)}
-                placeholder="e.g. John"
+                placeholder="เช่น สมชาย"
                 autoFocus
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="assign-note">Remark (IfHas)</Label>
+              <Label htmlFor="assign-note">หมายเหตุ (ถ้ามี)</Label>
               <Textarea
                 id="assign-note"
                 value={assignNote}
                 onChange={(e) => setAssignNote(e.target.value)}
-                placeholder="e.g. appointmentintoCheckDate..."
+                placeholder="เช่น นัดเข้าตรวจสอบวันที่..."
                 className="min-h-[60px]"
               />
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={assigning}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={assigning}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
               disabled={assigning || !techName.trim()}
@@ -4158,7 +4158,7 @@ function WorkOrderDetailContent({
               {assigning ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />
               ) : null}
-              Assign
+              มอบหมายงาน
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -4168,20 +4168,20 @@ function WorkOrderDetailContent({
       <AlertDialog open={completeOpen} onOpenChange={setCompleteOpen}>
         <AlertDialogContent className="max-h-[90dvh] overflow-y-auto">
           <AlertDialogHeader>
-            <AlertDialogTitle>Close</AlertDialogTitle>
+            <AlertDialogTitle>ปิดงาน</AlertDialogTitle>
             <AlertDialogDescription>
-              ConfirmClose {wo.woNumber} — StatuswillChangeas &quot;Done&quot;
+              ยืนยันการปิดงาน {wo.woNumber} — สถานะจะเปลี่ยนเป็น &quot;เสร็จแล้ว&quot;
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3 py-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="complete-resolution">ResultEdit</Label>
+              <Label htmlFor="complete-resolution">ผลการซ่อม</Label>
               {resolutions.length === 0 ? (
                 <Input
                   id="complete-resolution"
                   value={resolutionValue}
                   onChange={(e) => setResolutionValue(e.target.value)}
-                  placeholder="PrintResultEdit"
+                  placeholder="พิมพ์ผลการซ่อม"
                 />
               ) : (
                 <Select
@@ -4193,7 +4193,7 @@ function WorkOrderDetailContent({
                   }}
                 >
                   <SelectTrigger id="complete-resolution">
-                    <SelectValue placeholder="SelectResultEdit" />
+                    <SelectValue placeholder="เลือกผลการซ่อม" />
                   </SelectTrigger>
                   <SelectContent>
                     {resolutionGroups.map(([group, opts]) => (
@@ -4213,17 +4213,17 @@ function WorkOrderDetailContent({
               )}
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="complete-note">RemarkRepair</Label>
+              <Label htmlFor="complete-note">หมายเหตุการซ่อม</Label>
               <Textarea
                 id="complete-note"
                 value={completeNote}
                 onChange={(e) => setCompleteNote(e.target.value)}
-                placeholder="e.g. ChangeInk, EditSettingsNetwork..."
+                placeholder="เช่น เปลี่ยนหมึก, แก้ไขการตั้งค่าเครือข่าย..."
                 className="min-h-[80px]"
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="complete-pic-after">imageAfter (Optional)</Label>
+              <Label htmlFor="complete-pic-after">รูปหลังซ่อม (ไม่บังคับ)</Label>
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   ref={picAfterInputRef}
@@ -4240,17 +4240,17 @@ function WorkOrderDetailContent({
                   onClick={() => picAfterInputRef.current?.click()}
                 >
                   <ImageIcon className="h-4 w-4" />
-                  {picAfter ? 'Changeimage' : 'Selectimage'}
+                  {picAfter ? 'เปลี่ยนรูป' : 'เลือกรูป'}
                 </Button>
                 <CameraCapture
                   onCapture={(dataUrl) => setPicAfter(dataUrl)}
-                  label="captureImage"
+                  label="ถ่ายรูป"
                 />
                 {picAfter && (
                   <div className="flex items-center gap-1">
                     <img
                       src={picAfter}
-                      alt="pic-after"
+                      alt="รูปหลังซ่อม"
                       className="h-8 w-8 rounded border object-cover"
                     />
                     <button
@@ -4258,7 +4258,7 @@ function WorkOrderDetailContent({
                       onClick={() => setPicAfter(null)}
                       className="text-[11px] text-rose-500 underline"
                     >
-                      Delete
+                      ลบ
                     </button>
                   </div>
                 )}
@@ -4275,19 +4275,19 @@ function WorkOrderDetailContent({
             <div className="flex items-center gap-2">
               <Calculator className="h-4 w-4 text-purple-600 dark:text-purple-400" />
               <span className="text-sm font-semibold text-purple-700 dark:text-purple-300">
-                WithdrawPartsAtClose
+                เบิกอะไหล่ตอนปิดงาน
               </span>
               <Badge
                 variant="outline"
                 className="border-purple-200 bg-purple-100 text-[10px] text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300"
               >
-                (optional)
+                (ตัวเลือก)
               </Badge>
             </div>
             <p className="text-[11px] leading-relaxed text-purple-700/80 dark:text-purple-300/80">
-              AddPartsatUseRepair — IfCloseUse &quot;ApproveAuto&quot; SystemwillReduceStock
-              andClosetoImmediate IfCloseKeep Work OrderwillChangeStatusas &quot;PendingParts&quot;
-              andPendingApproveBeforeClose
+              เพิ่มอะไหล่ที่ใช้ซ่อม — หากปิดงานโดยใช้ &quot;อนุมัติอัตโนมัติ&quot; ระบบจะตัดสต๊อกอัตโนมัติ
+              และปิดงานทันที หากยังไม่ปิดงาน ใบงานจะเปลี่ยนสถานะเป็น &quot;รออะไหล่&quot;
+              และรอการอนุมัติก่อนปิดงาน
             </p>
 
             {/* Search box */}
@@ -4296,7 +4296,7 @@ function WorkOrderDetailContent({
                 htmlFor="complete-parts-search"
                 className="text-purple-700 dark:text-purple-300"
               >
-                SearchProduct
+                ค้นหาสินค้า
               </Label>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -4304,13 +4304,13 @@ function WorkOrderDetailContent({
                   id="complete-parts-search"
                   value={completePartsSearch}
                   onChange={(e) => setCompletePartsSearch(e.target.value)}
-                  placeholder="PrintCodeProduct / Name / Brand"
+                  placeholder="พิมพ์รหัสสินค้า / ชื่อ / ยี่ห้อ"
                   className="bg-white pl-9 dark:bg-slate-900"
                 />
               </div>
               {completePartsSearchLoading && (
                 <div className="text-[11px] text-muted-foreground">
-                  Search...
+                  กำลังค้นหา...
                 </div>
               )}
               {!completePartsSearchLoading &&
@@ -4334,7 +4334,7 @@ function WorkOrderDetailContent({
                         </div>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                           <span>
-                            Remaining: {it.quantity} {it.unit}
+                            คงเหลือ: {it.quantity} {it.unit}
                           </span>
                           <Plus className="h-3 w-3 text-purple-500" />
                         </div>
@@ -4346,7 +4346,7 @@ function WorkOrderDetailContent({
                 completePartsSearch.trim() &&
                 completePartsSearchResults.length === 0 && (
                   <div className="rounded-md border border-dashed border-purple-200 p-3 text-center text-[11px] text-muted-foreground dark:border-purple-900/60">
-                    Not foundProductatmatchWith &quot;{completePartsSearch}&quot;
+                    ไม่พบสินค้าที่ตรงกับ &quot;{completePartsSearch}&quot;
                   </div>
                 )}
             </div>
@@ -4355,12 +4355,12 @@ function WorkOrderDetailContent({
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
                 <Label className="text-purple-700 dark:text-purple-300">
-                  itemsatWithdraw ({completePartsLines.length})
+                  รายการที่เบิก ({completePartsLines.length})
                 </Label>
               </div>
               {completePartsLines.length === 0 ? (
                 <div className="rounded-md border border-dashed border-purple-200 p-3 text-center text-[11px] text-muted-foreground dark:border-purple-900/60">
-                  StillNoSelectParts — SearchClick + forAdd
+                  ยังไม่ได้เลือกอะไหล่ — ค้นหาแล้วกด + เพื่อเพิ่ม
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -4378,7 +4378,7 @@ function WorkOrderDetailContent({
                         </div>
                         {line.unitCost !== null && line.unitCost > 0 && (
                           <div className="text-[10px] text-muted-foreground">
-                            Price/Unit: THB
+                            ราคา/หน่วย: THB
                             {line.unitCost.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
@@ -4415,7 +4415,7 @@ function WorkOrderDetailContent({
                           variant="ghost"
                           className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                           onClick={() => removeCompletePart(idx)}
-                          aria-label="Deleteitems"
+                          aria-label="ลบรายการ"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -4443,11 +4443,11 @@ function WorkOrderDetailContent({
                   />
                   <span className="flex-1">
                     <span className="font-medium text-emerald-700 dark:text-emerald-300">
-                      ApproveWithdrawPartsAuto
+                      อนุมัติเบิกอะไหล่อัตโนมัติ
                     </span>
                     <br />
                     <span className="text-muted-foreground">
-                      WhenCloseUse — SystemwillReduceStockandClosetoImmediate
+                      เมื่อปิดงาน — ระบบจะตัดสต๊อกและปิดงานทันที
                     </span>
                   </span>
                 </label>
@@ -4460,12 +4460,12 @@ function WorkOrderDetailContent({
                 >
                   {completeAutoApproveParts ? (
                     <>
-                      ✓ ClosereadyWithdrawParts {completePartsLines.length} items
-                      (ReduceStockImmediate)
+                      ✓ พร้อมปิดงาน — เบิกอะไหล่ {completePartsLines.length} รายการ
+                      (ตัดสต๊อกทันที)
                     </>
                   ) : (
                     <>
-                      ⚠ Work OrderwillChangeStatusas &quot;PendingParts&quot; andPendingApprovePartsBeforeClose
+                      ⚠ ใบงานจะเปลี่ยนสถานะเป็น &quot;รออะไหล่&quot; และต้องอนุมัติเบิกอะไหล่ก่อนปิดงาน
                     </>
                   )}
                 </div>
@@ -4474,7 +4474,7 @@ function WorkOrderDetailContent({
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={completing}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={completing}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
               disabled={completing}
@@ -4489,7 +4489,7 @@ function WorkOrderDetailContent({
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
               )}
-              Close
+              ปิดงาน
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -4499,25 +4499,25 @@ function WorkOrderDetailContent({
       <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>CancelWork Order</AlertDialogTitle>
+            <AlertDialogTitle>ยกเลิกใบงาน</AlertDialogTitle>
             <AlertDialogDescription>
-              ConfirmCancelWork Order {wo.woNumber} — NoCanback
+              ยืนยันการยกเลิกใบงาน {wo.woNumber} — ไม่สามารถย้อนกลับได้
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="grid gap-1.5 py-2">
             <Label htmlFor="cancel-reason">
-              causeResultCancel <span className="text-rose-500">*</span>
+              เหตุผลที่ยกเลิก <span className="text-rose-500">*</span>
             </Label>
             <Textarea
               id="cancel-reason"
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="e.g. ReporterrequestUninstall, Repairself, NoYesProblemreal..."
+              placeholder="เช่น ผู้แจ้งขอถอนการติดตั้ง, ซ่อมเอง, ไม่พบปัญหาจริง..."
               className="min-h-[80px]"
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={canceling}>Close</AlertDialogCancel>
+            <AlertDialogCancel disabled={canceling}>ปิด</AlertDialogCancel>
             <AlertDialogAction
               type="button"
               disabled={canceling || !cancelReason.trim()}
@@ -4532,7 +4532,7 @@ function WorkOrderDetailContent({
               ) : (
                 <XCircle className="h-4 w-4" />
               )}
-              CancelWork Order
+              ยกเลิกใบงาน
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -4544,32 +4544,32 @@ function WorkOrderDetailContent({
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Unlock className="h-5 w-5 text-orange-500" />
-              ReduceLockEditWork Order
+              ปลดล็อกเพื่อแก้ไขใบงาน
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Work Order {wo.woNumber} AtinStatus {wo.status}
+              ใบงาน {wo.woNumber} อยู่ในสถานะ {wo.status}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3 py-2">
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-              ⚠️ ReduceLockwillDotoCanEditWork OrderatClosetomoretimes
-              UseForcaseEditDataatErroronly
+              ⚠️ การปลดล็อกจะทำให้แก้ไขใบงานที่ปิดไปแล้วได้อีกครั้ง
+              ใช้เฉพาะกรณีแก้ไขข้อมูลที่ผิดพลาดเท่านั้น
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="unlock-note">
-                Remark <span className="text-[10px] text-slate-400">((optional))</span>
+                Remark <span className="text-[10px] text-slate-400">(ไม่บังคับ)</span>
               </Label>
               <Textarea
                 id="unlock-note"
                 value={unlockNote}
                 onChange={(e) => setUnlockNote(e.target.value)}
-                placeholder="SpecifycauseResultinReduceLock e.g. EditDataatError..."
+                placeholder="ระบุเหตุผลในการปลดล็อก เช่น แก้ไขข้อมูลที่ผิดพลาด..."
                 className="min-h-[60px]"
               />
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={unlocking}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={unlocking}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
               disabled={unlocking}
@@ -4584,7 +4584,7 @@ function WorkOrderDetailContent({
               ) : (
                 <Unlock className="h-4 w-4" />
               )}
-              ReduceLockEdit
+              ปลดล็อกเพื่อแก้ไข
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -4596,18 +4596,18 @@ function WorkOrderDetailContent({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit3 className="h-5 w-5 text-amber-500" />
-              ReporterEditWork Orderself
+              ผู้แจ้งแก้ไขใบงานของตนเอง
             </DialogTitle>
             <DialogDescription>
-              CanEditOnlyWork OrderatStillNocorrectReceive (Status PENDING)
-              MustConfirmidentitywithName + PhoneofReporter
+              แก้ไขได้เฉพาะใบงานที่ยังไม่ได้รับเรื่อง (สถานะ PENDING)
+              ต้องยืนยันตัวตนด้วยชื่อและเบอร์โทรของผู้แจ้ง
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="re-verify-name">
-                  NameReporter <span className="text-rose-500">*</span>
+                  ชื่อผู้แจ้ง <span className="text-rose-500">*</span>
                 </Label>
                 <Input
                   id="re-verify-name"
@@ -4619,7 +4619,7 @@ function WorkOrderDetailContent({
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="re-verify-phone">
-                  Phone <span className="text-rose-500">*</span>
+                  โทรศัพท์ <span className="text-rose-500">*</span>
                 </Label>
                 <Input
                   id="re-verify-phone"
@@ -4632,7 +4632,7 @@ function WorkOrderDetailContent({
               </div>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="re-emp">CodeemployeeWork (Optional)</Label>
+              <Label htmlFor="re-emp">รหัสพนักงาน (ไม่บังคับ)</Label>
               <Input
                 id="re-emp"
                 value={reporterEdit.employeeCode}
@@ -4642,10 +4642,10 @@ function WorkOrderDetailContent({
               />
             </div>
             <div className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-              Name + PhoneMustmatchWithContact Directory andmatchWithReporterinWork Order
+              ชื่อและเบอร์โทรต้องตรงกับสมุดรายชื่อและข้อมูลผู้แจ้งในใบงาน
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="re-subject">Problem Type</Label>
+              <Label htmlFor="re-subject">ประเภทปัญหา</Label>
               <Input
                 id="re-subject"
                 value={reporterEdit.subject}
@@ -4656,7 +4656,7 @@ function WorkOrderDetailContent({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
-                <Label htmlFor="re-building">Building / division</Label>
+                <Label htmlFor="re-building">อาคาร / แผนก</Label>
                 <Input
                   id="re-building"
                   value={reporterEdit.building}
@@ -4677,7 +4677,7 @@ function WorkOrderDetailContent({
               </div>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="re-details">Details</Label>
+              <Label htmlFor="re-details">รายละเอียด</Label>
               <Textarea
                 id="re-details"
                 value={reporterEdit.details}
@@ -4688,7 +4688,7 @@ function WorkOrderDetailContent({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="re-tel">PhoneNew</Label>
+              <Label htmlFor="re-tel">เบอร์โทรใหม่</Label>
               <Input
                 id="re-tel"
                 value={reporterEdit.tel}
@@ -4705,7 +4705,7 @@ function WorkOrderDetailContent({
               onClick={() => setReporterEditOpen(false)}
               disabled={reporterEditSaving}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button type="button"
               onClick={handleReporterEdit}
@@ -4717,7 +4717,7 @@ function WorkOrderDetailContent({
               ) : (
                 <Edit3 className="h-4 w-4" />
               )}
-              SaveEdit
+              บันทึกการแก้ไข
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4729,11 +4729,11 @@ function WorkOrderDetailContent({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5 text-purple-500" />
-              WithdrawParts — {wo.woNumber ?? '—'}
+              เบิกอะไหล่ — {wo.woNumber ?? '—'}
             </DialogTitle>
             <DialogDescription>
-              SearchPartsatMust SpecifyQuantity ClickSave — SystemwillCreateRequestPending Approval
-              (IfStillNonePartsPending StatusWork OrderwillChangeas &quot;PendingParts&quot;)
+              ค้นหาอะไหล่ที่ต้องการ ระบุจำนวน แล้วกดบันทึก — ระบบจะสร้างคำขอรอการอนุมัติ
+              (หากไม่มีอะไหล่ค้างรอ สถานะใบงานจะเปลี่ยนเป็น &quot;รออะไหล่&quot;)
             </DialogDescription>
           </DialogHeader>
 
@@ -4741,32 +4741,32 @@ function WorkOrderDetailContent({
             <div className="grid gap-3 px-1 py-1">
               {/* Requester */}
               <div className="grid gap-1.5">
-                <Label htmlFor="parts-requester">PersonWithdraw (Optional)</Label>
+                <Label htmlFor="parts-requester">ผู้เบิก (ไม่บังคับ)</Label>
                 <Input
                   id="parts-requester"
                   value={partsRequester}
                   onChange={(e) => setPartsRequester(e.target.value)}
-                  placeholder="NameTechnician / PersonWithdraw"
+                  placeholder="ชื่อช่าง / ผู้เบิก"
                 />
               </div>
 
               {/* Search products */}
               <div className="grid gap-1.5">
-                <Label htmlFor="parts-search">SearchProduct</Label>
+                <Label htmlFor="parts-search">ค้นหาสินค้า</Label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="parts-search"
                     value={partsSearch}
                     onChange={(e) => setPartsSearch(e.target.value)}
-                    placeholder="PrintCodeProduct / Name / Brand"
+                    placeholder="พิมพ์รหัสสินค้า / ชื่อ / ยี่ห้อ"
                     className="pl-9"
                     autoFocus
                   />
                 </div>
                 {partsSearchLoading && (
                   <div className="text-[11px] text-muted-foreground">
-                    Search...
+                    กำลังค้นหา...
                   </div>
                 )}
                 {!partsSearchLoading && partsSearchResults.length > 0 && (
@@ -4789,7 +4789,7 @@ function WorkOrderDetailContent({
                         </div>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                           <span>
-                            Remaining: {it.quantity} {it.unit}
+                            คงเหลือ: {it.quantity} {it.unit}
                           </span>
                           <Plus className="h-3 w-3 text-purple-500" />
                         </div>
@@ -4801,7 +4801,7 @@ function WorkOrderDetailContent({
                   partsSearch.trim() &&
                   partsSearchResults.length === 0 && (
                     <div className="rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground">
-                      Not foundProductatmatchWith &quot;{partsSearch}&quot;
+                      ไม่พบสินค้าที่ตรงกับ &quot;{partsSearch}&quot;
                     </div>
                   )}
               </div>
@@ -4809,11 +4809,11 @@ function WorkOrderDetailContent({
               {/* Selected parts list */}
               <div className="grid gap-2">
                 <div className="flex items-center justify-between">
-                  <Label>itemsatWithdraw ({partsLines.length})</Label>
+                  <Label>รายการที่เบิก ({partsLines.length})</Label>
                 </div>
                 {partsLines.length === 0 ? (
                   <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-                    StillNoSelectParts — SearchClick + forAdd
+                    ยังไม่ได้เลือกอะไหล่ — ค้นหาแล้วกด + เพื่อเพิ่ม
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -4839,7 +4839,7 @@ function WorkOrderDetailContent({
                               variant="ghost"
                               className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                               onClick={() => removePartsLine(idx)}
-                              aria-label="Deleteitems"
+                              aria-label="ลบรายการ"
                             >
                               <Trash2 className="h-3 w-3" />
                             </Button>
@@ -4852,14 +4852,14 @@ function WorkOrderDetailContent({
                               onClick={() => updatePartsLine(idx, 'usageSource', 'new-bottle')}
                               className={`flex-1 rounded border px-2 py-1 text-[10px] font-medium ${line.usageSource !== 'open-bottle' ? 'border-purple-500 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}
                             >
-                              📦 WithdrawNew
+                              📦 เบิกใหม่
                             </button>
                             <button
                               type="button"
                               onClick={() => updatePartsLine(idx, 'usageSource', 'open-bottle')}
                               className={`flex-1 rounded border px-2 py-1 text-[10px] font-medium ${line.usageSource === 'open-bottle' ? 'border-amber-500 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}
                             >
-                              🔁 UsebottlesClose
+                              🔁 ใช้ขวดที่เปิดแล้ว
                             </button>
                           </div>
 
@@ -4905,7 +4905,7 @@ function WorkOrderDetailContent({
                                 {/* QuantityatWithdraw — always shown */}
                                 <div className={isOpenBottle ? 'col-span-12' : 'col-span-6 sm:col-span-4'}>
                                   <Label className="mb-1 block text-[10px] text-muted-foreground">
-                                    QuantityatWithdraw {!isOpenBottle && <span className="text-rose-500">*</span>}
+                                    จำนวนที่เบิก {!isOpenBottle && <span className="text-rose-500">*</span>}
                                   </Label>
                                   <Input
                                     type="number"
@@ -4918,7 +4918,7 @@ function WorkOrderDetailContent({
                                     placeholder="1"
                                   />
                                   <p className="mt-0.5 text-[9px] text-slate-400">
-                                    {isOpenBottle ? 'NocutStock (qty=0)' : 'Quantityatwillcutfromwarehouse'}
+                                    {isOpenBottle ? 'ไม่ตัดสต๊อก (qty=0)' : 'จำนวนที่จะตัดจากคลัง'}
                                   </p>
                                 </div>
 
@@ -4926,7 +4926,7 @@ function WorkOrderDetailContent({
                                 {showUsageQuantity && (
                                   <div className="col-span-6 sm:col-span-4">
                                     <Label className="mb-1 block text-[10px] text-muted-foreground">
-                                      Usereal (fragmentbottles) {expectedDevices ? <span className="text-slate-400">· 1 bottles = {expectedDevices} units</span> : null}
+                                      จำนวนที่ใช้จริง (เศษของขวด) {expectedDevices ? <span className="text-slate-400">· 1 ขวด = {expectedDevices} หน่วย</span> : null}
                                     </Label>
                                     <Input
                                       type="number"
@@ -4954,7 +4954,7 @@ function WorkOrderDetailContent({
                                 {showUsageHours && (
                                   <div className="col-span-6 sm:col-span-4">
                                     <Label className="mb-1 block text-[10px] text-muted-foreground">
-                                      hratUse {expectedHours ? <span className="text-slate-400">· Normal {expectedHours} hr.</span> : null}
+                                      ชม. ที่ใช้ {expectedHours ? <span className="text-slate-400">· ปกติ {expectedHours} ชม.</span> : null}
                                     </Label>
                                     <Input
                                       type="number"
@@ -4966,7 +4966,7 @@ function WorkOrderDetailContent({
                                       placeholder="0"
                                     />
                                     <p className="mt-0.5 text-[9px] text-slate-400">
-                                      {line.usageHours ? `Useto ${line.usageHours} hr.` : 'SystemwillpullfromTimeRepairAuto'}
+                                      {line.usageHours ? `ใช้ไป ${line.usageHours} ชม.` : 'ระบบจะดึงจากเวลาซ่อมอัตโนมัติ'}
                                     </p>
                                   </div>
                                 )}
@@ -4975,7 +4975,7 @@ function WorkOrderDetailContent({
                                 {showUsagePages && (
                                   <div className="col-span-6 sm:col-span-4">
                                     <Label className="mb-1 block text-[10px] text-muted-foreground">
-                                      QuantityfrontatPrint {expectedPages ? <span className="text-slate-400">· Yield {expectedPages.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets</span> : null}
+                                      จำนวนแผ่นที่พิมพ์ {expectedPages ? <span className="text-slate-400">· พิมพ์ได้ {expectedPages.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น</span> : null}
                                     </Label>
                                     <Input
                                       type="number"
@@ -4986,7 +4986,7 @@ function WorkOrderDetailContent({
                                       placeholder="0"
                                     />
                                     <p className="mt-0.5 text-[9px] text-slate-400">
-                                      {line.usagePages ? `${Number(line.usagePages).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets` : 'SystemwillpullfromMeterAuto'}
+                                      {line.usagePages ? `${Number(line.usagePages).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น` : 'ระบบจะดึงจากมิเตอร์อัตโนมัติ'}
                                     </p>
                                   </div>
                                 )}
@@ -4994,13 +4994,13 @@ function WorkOrderDetailContent({
                                 {/* Remark — always shown (optional) */}
                                 <div className={isOpenBottle ? 'col-span-12' : 'col-span-6 sm:col-span-4'}>
                                   <Label className="mb-1 block text-[10px] text-muted-foreground">
-                                    Remark
+                                    หมายเหตุ
                                   </Label>
                                   <Input
                                     value={line.remark}
                                     onChange={(e) => updatePartsLine(idx, 'remark', e.target.value)}
                                     className="h-9 text-sm"
-                                    placeholder="Remark (IfHas)"
+                                    placeholder="หมายเหตุ (ถ้ามี)"
                                   />
                                 </div>
                               </div>
@@ -5009,7 +5009,7 @@ function WorkOrderDetailContent({
 
                           {isOpenBottle && (
                             <div className="mt-1.5 rounded bg-amber-100 px-2 py-1 text-[10px] text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-                              ℹ️ UsefrombottlesatClose — NocutStock (qty=0), SaveOnlyAmountatUsereal
+                              ℹ️ ใช้จากขวดหมึกที่เปิดแล้วตอนปิดงาน — ไม่ตัดสต๊อก (qty=0) บันทึกเฉพาะจำนวนที่ใช้จริง
                             </div>
                           )}
                         </div>
@@ -5027,7 +5027,7 @@ function WorkOrderDetailContent({
               onClick={() => setPartsOpen(false)}
               disabled={partsSaving}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button type="button"
               onClick={handleRequestParts}
@@ -5039,7 +5039,7 @@ function WorkOrderDetailContent({
               ) : (
                 <Package className="h-4 w-4" />
               )}
-              SendRequestWithdraw ({partsLines.filter((l) => Number(l.quantity) > 0 || (Number(l.usageQuantity) > 0 && l.usageSource === 'open-bottle')).length})
+              ส่งคำขอเบิก ({partsLines.filter((l) => Number(l.quantity) > 0 || (Number(l.usageQuantity) > 0 && l.usageSource === 'open-bottle')).length})
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -5066,16 +5066,16 @@ function WorkOrderDetailContent({
       >
         <DialogContent className="max-h-[92vh] max-w-[92vw] overflow-hidden border-none bg-black/95 p-0 sm:max-w-[1000px]">
           <DialogHeader className="sr-only">
-            <DialogTitle>View full size</DialogTitle>
+            <DialogTitle>ดูขนาดเต็ม</DialogTitle>
             <DialogDescription>
-              click outsideImageorClick Esc forClose
+              คลิกนอกรูปหรือกด Esc เพื่อปิด
             </DialogDescription>
           </DialogHeader>
           {lightboxSrc && (
             <div className="relative flex max-h-[92vh] items-center justify-center">
               <img
                 src={normalizeImageUrl(lightboxSrc) ?? undefined}
-                alt="imageImage็Size"
+                alt="รูปภาพขนาดเต็ม"
                 className="max-h-[92vh] max-w-full object-contain"
                 onError={(e) => {
                   // If full-res fails, show message instead of broken image.
@@ -5085,7 +5085,7 @@ function WorkOrderDetailContent({
                   if (parent && !parent.querySelector('.lightbox-fallback')) {
                     const div = document.createElement('div')
                     div.className = 'lightbox-fallback p-6 text-center text-sm text-muted-foreground'
-                    div.textContent = 'NoCanLoadimage — Filein Google Drive mayasSectionunit orLinkExpired'
+                    div.textContent = 'โหลดรูปภาพไม่ได้ — ไฟล์ใน Google Drive อาจถูกตั้งค่าเป็นส่วนตัวหรือลิงก์หมดอายุ'
                     parent.appendChild(div)
                   }
                 }}
@@ -5107,13 +5107,13 @@ function WorkOrderDetailContent({
       <AlertDialog open={!!deleteImageTarget} onOpenChange={(open) => !open && setDeleteImageTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ConfirmDelete</AlertDialogTitle>
+            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
             <AlertDialogDescription>
-              MustDeleteimage ({deleteImageTarget?.stage ?? ''}) YesorNo? ActionsNoCanCancel
+              ต้องการลบรูปภาพ ({deleteImageTarget?.stage ?? ''}) ใช่หรือไม่? การกระทำนี้ยกเลิกไม่ได้
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
               onClick={(e) => {
@@ -5122,7 +5122,7 @@ function WorkOrderDetailContent({
               }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
-              Delete
+              ลบ
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -5138,7 +5138,7 @@ function PartsStatusBadge({ status }: { status: string }) {
         variant="outline"
         className="border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
       >
-        Pending Approval
+        รอการอนุมัติ
       </Badge>
     )
   }
@@ -5148,7 +5148,7 @@ function PartsStatusBadge({ status }: { status: string }) {
         variant="outline"
         className="border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
       >
-        Approve
+        อนุมัติ
       </Badge>
     )
   }
@@ -5158,7 +5158,7 @@ function PartsStatusBadge({ status }: { status: string }) {
         variant="outline"
         className="border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"
       >
-        Reject
+        ปฏิเสธ
       </Badge>
     )
   }
@@ -5254,11 +5254,11 @@ function WoImageStageGroup({
               ) : (
                 <Plus className="mr-1 h-3.5 w-3.5 sm:h-3 sm:w-3" />
               )}
-              Addimage
+              เพิ่มรูป
             </Button>
             <CameraCapture
               onCapture={onCamera}
-              label="captureImage"
+              label="ถ่ายรูป"
               className="min-h-9 px-3 text-xs sm:min-h-7 sm:px-2 sm:text-[11px]"
             />
           </div>
@@ -5266,8 +5266,8 @@ function WoImageStageGroup({
       </div>
       {images.length === 0 ? (
         <div className="rounded-md border border-dashed px-3 py-4 text-center text-[11px] text-muted-foreground">
-          StillNoneimageinstepAt
-          {canAdd && ' — Click "Addimage" forUpload'}
+          ยังไม่มีรูปภาพในขั้นตอนนี้
+          {canAdd && ' — กด "เพิ่มรูป" เพื่ออัปโหลด'}
         </div>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
@@ -5283,8 +5283,8 @@ function WoImageStageGroup({
                   type="button"
                   onClick={() => onView(img.image_data)}
                   className="absolute inset-0 h-full w-full"
-                  aria-label={`image${label}Size็`}
-                  title="View full size"
+                  aria-label={`ดูรูป ${label} ขนาดเต็ม`}
+                  title="ดูขนาดเต็ม"
                 >
                   <img
                     src={normalizeImageUrlThumb(img.image_data) ?? undefined}
@@ -5315,8 +5315,8 @@ function WoImageStageGroup({
                       onView(img.image_data)
                     }}
                     className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
-                    aria-label="View full size"
-                    title="View full size"
+                    aria-label="ดูขนาดเต็ม"
+                    title="ดูขนาดเต็ม"
                   >
                     <Eye className="h-3.5 w-3.5" />
                   </button>
@@ -5329,8 +5329,8 @@ function WoImageStageGroup({
                       }}
                       disabled={isDeleting}
                       className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-rose-600 disabled:opacity-50"
-                      aria-label="Deleteimage"
-                      title="Deleteimage"
+                      aria-label="ลบรูปภาพ"
+                      title="ลบรูปภาพ"
                     >
                       {isDeleting ? (
                         <RefreshCw className="h-3.5 w-3.5 animate-spin" />

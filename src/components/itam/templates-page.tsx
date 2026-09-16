@@ -133,21 +133,21 @@ interface TabDef {
 const TABS: TabDef[] = [
   {
     key: 'sticker',
-    label: 'Sticker',
+    label: 'สติกเกอร์',
     icon: '🎨',
-    description: 'labelsmall e.g. 75×36mm, 50×30mm — ForattachDevice',
+    description: 'ฉลากขนาดเล็ก เช่น 75×36mm, 50×30mm — สำหรับติดอุปกรณ์',
   },
   {
     key: 'document',
-    label: 'Document PDF',
+    label: 'เอกสาร PDF',
     icon: '📑',
-    description: 'DocumentSize A4/A3 — Report / ticketSummaryActive',
+    description: 'ขนาดกระดาษ A4/A3 — รายงาน / สรุปใบงาน',
   },
   {
     key: 'work-order',
-    label: 'Work Order',
+    label: 'ใบงาน',
     icon: '🔧',
-    description: 'Repair Ticket / ticketWithdraw / ticketReceive / Purchase Order',
+    description: 'ใบแจ้งซ่อม / ใบเบิกอะไหล่ / ใบรับเครื่อง / ใบสั่งซื้อ',
   },
 ]
 
@@ -224,16 +224,16 @@ function StickerTab() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'CreateNoSuccess')
+        throw new Error(j.error ?? 'สร้างไม่สำเร็จ')
       }
       return res.json() as Promise<{ template: StickerTemplate }>
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sticker-templates'] })
-      toast.success('CreateTemplateSticker — ClosefrontoutType')
+      toast.success('สร้างเทมเพลตสติกเกอร์แล้ว')
     },
     onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : 'CreateNoSuccess'),
+      toast.error(e instanceof Error ? e.message : 'สร้างไม่สำเร็จ'),
   })
 
   const duplicateMutation = useMutation({
@@ -250,16 +250,16 @@ function StickerTab() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'CopyNoSuccess')
+        throw new Error(j.error ?? 'คัดลอกไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sticker-templates'] })
-      toast.success('CopyTemplate')
+      toast.success('คัดลอกเทมเพลตแล้ว')
     },
     onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : 'CopyNoSuccess'),
+      toast.error(e instanceof Error ? e.message : 'คัดลอกไม่สำเร็จ'),
   })
 
   const activateMutation = useMutation({
@@ -270,16 +270,16 @@ function StickerTab() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'SettingsNoSuccess')
+        throw new Error(j.error ?? 'ตั้งค่าไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sticker-templates'] })
-      toast.success('SetasTemplateDefault')
+      toast.success('ตั้งเป็นเทมเพลตเริ่มต้นแล้ว')
     },
     onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : 'SettingsNoSuccess'),
+      toast.error(e instanceof Error ? e.message : 'ตั้งค่าไม่สำเร็จ'),
   })
 
   const deleteMutation = useMutation({
@@ -290,17 +290,17 @@ function StickerTab() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'DeleteNoSuccess')
+        throw new Error(j.error ?? 'ลบไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sticker-templates'] })
-      toast.success('DeleteTemplate')
+      toast.success('ลบเทมเพลตแล้ว')
       setDeleteTarget(null)
     },
     onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : 'DeleteNoSuccess'),
+      toast.error(e instanceof Error ? e.message : 'ลบไม่สำเร็จ'),
   })
 
   async function handleCreate() {
@@ -331,13 +331,13 @@ function StickerTab() {
         <div className="space-y-1">
           <CardTitle className="flex items-center gap-2 text-base md:text-lg">
             <span aria-hidden>🎨</span>
-            Sticker — itemTemplate
+            สติกเกอร์ — เทมเพลต
             <Badge variant="secondary" className="ml-1 text-[10px]">
               {templates.length}
             </Badge>
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            labelSizesmallForattachDevice — Click &quot;CreateNew&quot; foroutType
+            ฉลากขนาดเล็กสำหรับติดอุปกรณ์ — กด &quot;สร้างใหม่&quot; เพื่อเริ่มออกแบบ
           </p>
         </div>
         <Button
@@ -346,7 +346,7 @@ function StickerTab() {
           className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c]"
         >
           <Plus className="mr-1.5 h-4 w-4" />
-          CreateNew
+          สร้างใหม่
         </Button>
       </CardHeader>
       <CardContent>
@@ -359,9 +359,9 @@ function StickerTab() {
         ) : templates.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
             <FileText className="h-10 w-10 text-muted-foreground/50" />
-            <p className="text-sm font-medium">StillNoneTemplateSticker</p>
+            <p className="text-sm font-medium">ยังไม่มีเทมเพลตสติกเกอร์</p>
             <p className="text-xs text-muted-foreground">
-              Click &quot;CreateNew&quot; forDefault
+              กด &quot;สร้างใหม่&quot; เพื่อสร้างเทมเพลตเริ่มต้น
             </p>
           </div>
         ) : (
@@ -402,7 +402,7 @@ function StickerTab() {
                     {isDefault && (
                       <Star
                         className="h-4 w-4 flex-shrink-0 fill-orange-500 text-orange-500"
-                        aria-label="FeeDefault"
+                        aria-label="ค่าเริ่มต้น"
                       />
                     )}
                   </div>
@@ -416,14 +416,14 @@ function StickerTab() {
                           : 'border-teal-200 bg-teal-50 px-1.5 py-0 text-[10px] text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
                       }
                     >
-                      {isSystem ? t('group.system') : 'Custom'}
+                      {isSystem ? t('group.system') : 'กำหนดเอง'}
                     </Badge>
                     {isDefault && (
                       <Badge
                         variant="outline"
                         className="border-orange-200 bg-orange-50 px-1.5 py-0 text-[10px] text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300"
                       >
-                        ★ FeeDefault
+                        ★ ค่าเริ่มต้น
                       </Badge>
                     )}
                   </div>
@@ -435,7 +435,7 @@ function StickerTab() {
                       className="h-7 flex-1 text-xs"
                       onClick={() => setActivePage('itam-sticker-editor')}
                     >
-                      <Pencil className="mr-1 h-3 w-3" /> Edit
+                      <Pencil className="mr-1 h-3 w-3" /> แก้ไข
                     </Button>
                     {!isDefault && (
                       <Button
@@ -444,8 +444,8 @@ function StickerTab() {
                         className="h-7 w-7 p-0"
                         onClick={() => activateMutation.mutate(tpl.id)}
                         disabled={activateMutation.isPending}
-                        title="SetasFeeDefault"
-                        aria-label="SetasFeeDefault"
+                        title="ตั้งเป็นค่าเริ่มต้น"
+                        aria-label="ตั้งเป็นค่าเริ่มต้น"
                       >
                         <Star className="h-3.5 w-3.5" />
                       </Button>
@@ -456,8 +456,8 @@ function StickerTab() {
                       className="h-7 w-7 p-0"
                       onClick={() => duplicateMutation.mutate(tpl)}
                       disabled={duplicateMutation.isPending}
-                      title="Copy"
-                      aria-label="Copy"
+                      title="คัดลอก"
+                      aria-label="คัดลอก"
                     >
                       <Copy className="h-3.5 w-3.5" />
                     </Button>
@@ -487,16 +487,16 @@ function StickerTab() {
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span aria-hidden>🎨</span> CreateTemplateStickerNew
+              <span aria-hidden>🎨</span> สร้างเทมเพลตสติกเกอร์ใหม่
             </DialogTitle>
             <DialogDescription>
-              SelectSizePaperandSetName — Click &quot;Create&quot; forCloseEditor
+              เลือกขนาดกระดาษและตั้งชื่อ — กด &quot;สร้าง&quot; เพื่อเปิดหน้าออกแบบ
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="stk-name" className="text-xs">
-                NameTemplate <span className="text-destructive">*</span>
+                ชื่อเทมเพลต <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="stk-name"
@@ -504,13 +504,13 @@ function StickerTab() {
                 onChange={(e) =>
                   setCreateForm((s) => ({ ...s, name: e.target.value }))
                 }
-                placeholder="e.g. StickerDeviceStandard"
+                placeholder="เช่น สติกเกอร์อุปกรณ์มาตรฐาน"
                 className="h-9"
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="stk-paper" className="text-xs">
-                SizePaper
+                ขนาดกระดาษ
               </Label>
               <Select
                 value={createForm.paper}
@@ -519,7 +519,7 @@ function StickerTab() {
                 }
               >
                 <SelectTrigger id="stk-paper" className="h-9">
-                  <SelectValue placeholder="SelectSize" />
+                  <SelectValue placeholder="เลือกขนาด" />
                 </SelectTrigger>
                 <SelectContent>
                   {PAPER_PRESETS.map((p) => (
@@ -537,7 +537,7 @@ function StickerTab() {
               onClick={() => setCreateOpen(false)}
               disabled={creating}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button
               onClick={handleCreate}
@@ -546,11 +546,11 @@ function StickerTab() {
             >
               {creating ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Create…
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> สร้าง…
                 </>
               ) : (
                 <>
-                  <Plus className="mr-2 h-4 w-4" /> Create + CloseEditor
+                  <Plus className="mr-2 h-4 w-4" /> สร้าง + เปิดหน้าออกแบบ
                 </>
               )}
             </Button>
@@ -565,13 +565,13 @@ function StickerTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ConfirmDeleteTemplate</AlertDialogTitle>
+            <AlertDialogTitle>ยืนยันการลบเทมเพลต</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sureorthatMustDeleteTemplate{' '}
+              คุณแน่ใจหรือไม่ว่าต้องการลบเทมเพลต{' '}
               <span className="font-medium text-foreground">
                 &quot;{deleteTarget?.name}&quot;
               </span>
-              ? DoNoCanback
+              ? การกระทำนี้ย้อนกลับไม่ได้
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -588,10 +588,10 @@ function StickerTab() {
               {deleteMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Delete…
+                  ลบ…
                 </>
               ) : (
-                'DeleteTemplate'
+                'ลบเทมเพลต'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -645,16 +645,16 @@ function DocumentTab() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'CreateNoSuccess')
+        throw new Error(j.error ?? 'สร้างไม่สำเร็จ')
       }
       return res.json() as Promise<{ template: DocTemplateT }>
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['document-templates'] })
-      toast.success('CreateTemplateDocument — ClosefrontoutType')
+      toast.success('สร้างเทมเพลตเอกสารแล้ว')
     },
     onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : 'CreateNoSuccess'),
+      toast.error(e instanceof Error ? e.message : 'สร้างไม่สำเร็จ'),
   })
 
   const duplicateMutation = useMutation({
@@ -673,16 +673,16 @@ function DocumentTab() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'CopyNoSuccess')
+        throw new Error(j.error ?? 'คัดลอกไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['document-templates'] })
-      toast.success('CopyTemplate')
+      toast.success('คัดลอกเทมเพลตแล้ว')
     },
     onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : 'CopyNoSuccess'),
+      toast.error(e instanceof Error ? e.message : 'คัดลอกไม่สำเร็จ'),
   })
 
   const activateMutation = useMutation({
@@ -693,16 +693,16 @@ function DocumentTab() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'SettingsNoSuccess')
+        throw new Error(j.error ?? 'ตั้งค่าไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['document-templates'] })
-      toast.success('SetasTemplateDefault')
+      toast.success('ตั้งเป็นเทมเพลตเริ่มต้นแล้ว')
     },
     onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : 'SettingsNoSuccess'),
+      toast.error(e instanceof Error ? e.message : 'ตั้งค่าไม่สำเร็จ'),
   })
 
   const deleteMutation = useMutation({
@@ -713,17 +713,17 @@ function DocumentTab() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'DeleteNoSuccess')
+        throw new Error(j.error ?? 'ลบไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['document-templates'] })
-      toast.success('DeleteTemplate')
+      toast.success('ลบเทมเพลตแล้ว')
       setDeleteTarget(null)
     },
     onError: (e: unknown) =>
-      toast.error(e instanceof Error ? e.message : 'DeleteNoSuccess'),
+      toast.error(e instanceof Error ? e.message : 'ลบไม่สำเร็จ'),
   })
 
   async function handleCreate() {
@@ -745,13 +745,13 @@ function DocumentTab() {
         <div className="space-y-1">
           <CardTitle className="flex items-center gap-2 text-base md:text-lg">
             <span aria-hidden>📑</span>
-            Document PDF — itemTemplate
+            เอกสาร PDF — เทมเพลต
             <Badge variant="secondary" className="ml-1 text-[10px]">
               {templates.length}
             </Badge>
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            DocumentSize A4/A3 — Report / ticketSummaryActiveitemmonths
+            ขนาดกระดาษ A4/A3 — รายงาน / สรุปใบงานรายเดือน
           </p>
         </div>
         <Button
@@ -760,7 +760,7 @@ function DocumentTab() {
           className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c]"
         >
           <Plus className="mr-1.5 h-4 w-4" />
-          CreateNew
+          สร้างใหม่
         </Button>
       </CardHeader>
       <CardContent>
@@ -773,9 +773,9 @@ function DocumentTab() {
         ) : templates.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
             <FileText className="h-10 w-10 text-muted-foreground/50" />
-            <p className="text-sm font-medium">StillNoneTemplateDocument</p>
+            <p className="text-sm font-medium">ยังไม่มีเทมเพลตเอกสาร</p>
             <p className="text-xs text-muted-foreground">
-              Click &quot;CreateNew&quot; forDefault
+              กด &quot;สร้างใหม่&quot; เพื่อสร้างเทมเพลตเริ่มต้น
             </p>
           </div>
         ) : (
@@ -816,7 +816,7 @@ function DocumentTab() {
                     {isDefault && (
                       <Star
                         className="h-4 w-4 flex-shrink-0 fill-orange-500 text-orange-500"
-                        aria-label="FeeDefault"
+                        aria-label="ค่าเริ่มต้น"
                       />
                     )}
                   </div>
@@ -830,14 +830,14 @@ function DocumentTab() {
                           : 'border-teal-200 bg-teal-50 px-1.5 py-0 text-[10px] text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
                       }
                     >
-                      {isSystem ? t('group.system') : 'Custom'}
+                      {isSystem ? t('group.system') : 'กำหนดเอง'}
                     </Badge>
                     {isDefault && (
                       <Badge
                         variant="outline"
                         className="border-orange-200 bg-orange-50 px-1.5 py-0 text-[10px] text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300"
                       >
-                        ★ FeeDefault
+                        ★ ค่าเริ่มต้น
                       </Badge>
                     )}
                   </div>
@@ -849,7 +849,7 @@ function DocumentTab() {
                       className="h-7 flex-1 text-xs"
                       onClick={() => setActivePage('itam-document-editor')}
                     >
-                      <Pencil className="mr-1 h-3 w-3" /> Edit
+                      <Pencil className="mr-1 h-3 w-3" /> แก้ไข
                     </Button>
                     {!isDefault && (
                       <Button
@@ -858,8 +858,8 @@ function DocumentTab() {
                         className="h-7 w-7 p-0"
                         onClick={() => activateMutation.mutate(tpl.id)}
                         disabled={activateMutation.isPending}
-                        title="SetasFeeDefault"
-                        aria-label="SetasFeeDefault"
+                        title="ตั้งเป็นค่าเริ่มต้น"
+                        aria-label="ตั้งเป็นค่าเริ่มต้น"
                       >
                         <Star className="h-3.5 w-3.5" />
                       </Button>
@@ -870,8 +870,8 @@ function DocumentTab() {
                       className="h-7 w-7 p-0"
                       onClick={() => duplicateMutation.mutate(tpl)}
                       disabled={duplicateMutation.isPending}
-                      title="Copy"
-                      aria-label="Copy"
+                      title="คัดลอก"
+                      aria-label="คัดลอก"
                     >
                       <Copy className="h-3.5 w-3.5" />
                     </Button>
@@ -901,22 +901,22 @@ function DocumentTab() {
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span aria-hidden>📑</span> CreateTemplateDocumentNew
+              <span aria-hidden>📑</span> สร้างเทมเพลตเอกสารใหม่
             </DialogTitle>
             <DialogDescription>
-              SetNameTemplate — Click &quot;Create&quot; forCloseEditor A4
+              ตั้งชื่อเทมเพลต — กด &quot;สร้าง&quot; เพื่อเปิดหน้าแก้ไข A4
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="doc-name" className="text-xs">
-                NameTemplate <span className="text-destructive">*</span>
+                ชื่อเทมเพลต <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="doc-name"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                placeholder="e.g. ReportMeteritemmonths"
+                placeholder="เช่น รายงานมิเตอร์รายเดือน"
                 className="h-9"
               />
             </div>
@@ -927,7 +927,7 @@ function DocumentTab() {
               onClick={() => setCreateOpen(false)}
               disabled={creating}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button
               onClick={handleCreate}
@@ -936,11 +936,11 @@ function DocumentTab() {
             >
               {creating ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Create…
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> สร้าง…
                 </>
               ) : (
                 <>
-                  <Plus className="mr-2 h-4 w-4" /> Create + CloseEditor
+                  <Plus className="mr-2 h-4 w-4" /> สร้าง + เปิดหน้าออกแบบ
                 </>
               )}
             </Button>
@@ -955,13 +955,13 @@ function DocumentTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ConfirmDeleteTemplate</AlertDialogTitle>
+            <AlertDialogTitle>ยืนยันการลบเทมเพลต</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sureorthatMustDeleteTemplate{' '}
+              คุณแน่ใจหรือไม่ว่าต้องการลบเทมเพลต{' '}
               <span className="font-medium text-foreground">
                 &quot;{deleteTarget?.name}&quot;
               </span>
-              ? DoNoCanback
+              ? การกระทำนี้ย้อนกลับไม่ได้
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -978,10 +978,10 @@ function DocumentTab() {
               {deleteMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Delete…
+                  ลบ…
                 </>
               ) : (
-                'DeleteTemplate'
+                'ลบเทมเพลต'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1028,8 +1028,8 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
 
   async function handleSave(content: TemplateContent) {
     if (!form.name.trim()) {
-      toast.error('PleaseSpecifyNameTemplate')
-      throw new Error('PleaseSpecifyNameTemplate')
+      toast.error('กรุณาระบุชื่อเทมเพลต')
+      throw new Error('กรุณาระบุชื่อเทมเพลต')
     }
     setSaving(true)
     try {
@@ -1055,10 +1055,10 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
           })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'SaveNoSuccess')
+        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
       }
       queryClient.invalidateQueries({ queryKey: ['templates'] })
-      toast.success(isEditing ? 'SaveTemplate' : 'CreateTemplate')
+      toast.success(isEditing ? 'บันทึกเทมเพลตแล้ว' : 'สร้างเทมเพลตแล้ว')
       onOpenChange(false)
     } finally {
       setSaving(false)
@@ -1070,21 +1070,21 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
       <DialogContent className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1200px]">
         <DialogHeader className="border-b px-5 py-3">
           <DialogTitle className="flex items-center gap-2 text-base">
-            {isEditing ? 'EditTemplate' : 'CreateTemplateNew'}{' '}
+            {isEditing ? 'แก้ไขเทมเพลต' : 'สร้างเทมเพลตใหม่'}{' '}
             <Badge variant="outline" className="text-xs">
               {TEMPLATE_TYPE_META.find((m) => m.value === type)?.label ?? type}
             </Badge>
           </DialogTitle>
           <DialogDescription className="text-xs">
-            outTypeTemplateonPapermock — drag/abbreviate/expand Click
-            &quot;Save&quot; WhenDone
+            ตัวอย่างเทมเพลตบนกระดาษจำลอง — ลาก/ย่อ/ขยายได้
+            กด &quot;บันทึก&quot; เมื่อเสร็จแล้ว
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 gap-3 border-b bg-card px-5 py-3 sm:grid-cols-[1fr_1fr_auto_auto_auto]">
           <div className="space-y-1">
             <Label htmlFor="tpl-name" className="text-[11px]">
-              NameTemplate <span className="text-destructive">*</span>
+              ชื่อเทมเพลต <span className="text-destructive">*</span>
             </Label>
             <Input
               id="tpl-name"
@@ -1092,13 +1092,13 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
               onChange={(e) =>
                 setForm((s) => ({ ...s, name: e.target.value }))
               }
-              placeholder="e.g. Repair TicketStandard"
+              placeholder="เช่น ใบแจ้งซ่อมมาตรฐาน"
               className="h-8"
             />
           </div>
           <div className="space-y-1">
             <Label htmlFor="tpl-category" className="text-[11px]">
-              Category
+              หมวดหมู่
             </Label>
             <Input
               id="tpl-category"
@@ -1119,7 +1119,7 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
               }
             />
             <Label htmlFor="tpl-active" className="text-[11px]">
-              Active
+              เปิดใช้งาน
             </Label>
           </div>
           <div className="flex items-end gap-2">
@@ -1131,7 +1131,7 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
               }
             />
             <Label htmlFor="tpl-default" className="text-[11px]">
-              FeeDefault
+              ค่าเริ่มต้น
             </Label>
           </div>
           <div className="flex items-end gap-2">
@@ -1145,10 +1145,10 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
             <Label
               htmlFor="tpl-fixed"
               className="flex items-center gap-1 text-[11px]"
-              title="TemplateofSystem — NoCanDelete (Copy)"
+              title="เทมเพลตของระบบ — ลบไม่ได้ (คัดลอกได้)"
             >
               <Pin className="h-3 w-3" />
-              System
+              ระบบ
             </Label>
           </div>
         </div>
@@ -1216,18 +1216,18 @@ function useSeedDefaults() {
         })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
-          throw new Error(j.error ?? `CreateTemplateDefaultFor ${t} Failed`)
+          throw new Error(j.error ?? `สร้างเทมเพลตเริ่มต้นสำหรับ ${t} ไม่สำเร็จ`)
         }
         return res.json()
       }),
     )
       .then(() => {
         queryClient.invalidateQueries({ queryKey: ['templates'] })
-        toast.success('CreateTemplateDefault')
+        toast.success('สร้างเทมเพลตเริ่มต้นแล้ว')
       })
       .catch((err: unknown) => {
         toast.error(
-          err instanceof Error ? err.message : 'CreateTemplateDefaultFailed',
+          err instanceof Error ? err.message : 'สร้างเทมเพลตเริ่มต้นไม่สำเร็จ',
         )
       })
       .finally(() => setSeeding(false))
@@ -1279,16 +1279,16 @@ function WorkOrderTab() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'UpdateNoSuccess')
+        throw new Error(j.error ?? 'อัปเดตไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: (_data, tpl) => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
-      toast.success(tpl.isActive ? 'CloseActiveTemplate' : 'CloseActiveTemplate')
+      toast.success(tpl.isActive ? 'ปิดใช้งานเทมเพลตแล้ว' : 'เปิดใช้งานเทมเพลตแล้ว')
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'UpdateNoSuccess')
+      toast.error(err instanceof Error ? err.message : 'อัปเดตไม่สำเร็จ')
     },
   })
 
@@ -1301,18 +1301,18 @@ function WorkOrderTab() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'UpdateNoSuccess')
+        throw new Error(j.error ?? 'อัปเดตไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: (_data, tpl) => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
       toast.success(
-        tpl.isDefault ? 'CancelSetasFeeDefault' : 'SetasFeeDefault',
+        tpl.isDefault ? 'ยกเลิกการตั้งเป็นค่าเริ่มต้น' : 'ตั้งเป็นค่าเริ่มต้น',
       )
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'UpdateNoSuccess')
+      toast.error(err instanceof Error ? err.message : 'อัปเดตไม่สำเร็จ')
     },
   })
 
@@ -1321,17 +1321,17 @@ function WorkOrderTab() {
       const res = await fetch(`/api/templates/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'DeleteNoSuccess')
+        throw new Error(j.error ?? 'ลบไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
-      toast.success('DeleteTemplate')
+      toast.success('ลบเทมเพลตแล้ว')
       setDeleteTarget(null)
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'DeleteNoSuccess')
+      toast.error(err instanceof Error ? err.message : 'ลบไม่สำเร็จ')
     },
   })
 
@@ -1352,16 +1352,16 @@ function WorkOrderTab() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'CopyNoSuccess')
+        throw new Error(j.error ?? 'คัดลอกไม่สำเร็จ')
       }
       return res.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
-      toast.success('CopyTemplate')
+      toast.success('คัดลอกเทมเพลตแล้ว')
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'CopyNoSuccess')
+      toast.error(err instanceof Error ? err.message : 'คัดลอกไม่สำเร็จ')
     },
   })
 
@@ -1401,7 +1401,7 @@ function WorkOrderTab() {
         <div className="space-y-1">
           <CardTitle className="flex items-center gap-2 text-base md:text-lg">
             <span aria-hidden>{selectedMeta?.icon}</span>
-            {selectedMeta?.label} — itemTemplate
+            {selectedMeta?.label} — เทมเพลต
           </CardTitle>
           <p className="text-xs text-muted-foreground">
             {selectedMeta?.description}
@@ -1413,14 +1413,14 @@ function WorkOrderTab() {
           className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c]"
         >
           <Plus className="mr-1.5 h-4 w-4" />
-          CreateTemplateNew
+          สร้างเทมเพลตใหม่
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Sub-type selector (work-order / stock-out / stock-in / purchase-order) */}
         <div>
           <Label className="mb-2 block text-xs text-muted-foreground">
-            TypeDocument
+            ประเภทเอกสาร
           </Label>
           <div className="flex flex-wrap gap-2">
             {TEMPLATE_TYPE_META.filter(
@@ -1457,9 +1457,9 @@ function WorkOrderTab() {
         ) : !templates || templates.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
             <FileText className="h-10 w-10 text-muted-foreground/50" />
-            <p className="text-sm font-medium">StillNoneTemplateinType</p>
+            <p className="text-sm font-medium">ยังไม่มีเทมเพลตประเภทนี้</p>
             <p className="text-xs text-muted-foreground">
-              Click &quot;CreateTemplateNew&quot; forDefault
+              กด &quot;สร้างเทมเพลตใหม่&quot; เพื่อสร้างเทมเพลตเริ่มต้น
             </p>
           </div>
         ) : (
@@ -1467,13 +1467,13 @@ function WorkOrderTab() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[180px]">Name</TableHead>
-                  <TableHead className="min-w-[120px]">Category</TableHead>
-                  <TableHead className="text-center">Type</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-center">FeeDefault</TableHead>
-                  <TableHead className="min-w-[110px]">CreateWhen</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="min-w-[180px]">ชื่อ</TableHead>
+                  <TableHead className="min-w-[120px]">หมวดหมู่</TableHead>
+                  <TableHead className="text-center">ประเภท</TableHead>
+                  <TableHead className="text-center">สถานะ</TableHead>
+                  <TableHead className="text-center">ค่าเริ่มต้น</TableHead>
+                  <TableHead className="min-w-[110px]">วันที่สร้าง</TableHead>
+                  <TableHead className="text-right">การจัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1501,11 +1501,11 @@ function WorkOrderTab() {
                         }
                         title={
                           tpl.isFixed
-                            ? 'TemplateofSystem — NoCanDelete'
-                            : 'UserCreateup'
+                            ? 'เทมเพลตของระบบ — ลบไม่ได้'
+                            : 'ผู้ใช้สร้างเอง'
                         }
                       >
-                        {tpl.isFixed ? t('group.system') : 'Custom'}
+                        {tpl.isFixed ? t('group.system') : 'กำหนดเอง'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
@@ -1526,7 +1526,7 @@ function WorkOrderTab() {
                           variant="default"
                           className="border-orange-200 bg-orange-100 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300"
                         >
-                          ★ FeeDefault
+                          ★ ค่าเริ่มต้น
                         </Badge>
                       ) : (
                         <span className="text-sm text-muted-foreground/60">
@@ -1545,9 +1545,9 @@ function WorkOrderTab() {
                           className="h-8 w-8 p-0"
                           onClick={() => setActiveMutation.mutate(tpl)}
                           disabled={setActiveMutation.isPending}
-                          title={tpl.isActive ? 'CloseActive' : 'CloseActive'}
+                          title={tpl.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
                           aria-label={
-                            tpl.isActive ? 'CloseActive' : 'CloseActive'
+                            tpl.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'
                           }
                         >
                           <Check
@@ -1566,10 +1566,10 @@ function WorkOrderTab() {
                           disabled={setDefaultMutation.isPending}
                           title={
                             tpl.isDefault
-                              ? 'CancelSetasFeeDefault'
-                              : 'SetasFeeDefault'
+                              ? 'ยกเลิกการตั้งเป็นค่าเริ่มต้น'
+                              : 'ตั้งเป็นค่าเริ่มต้น'
                           }
-                          aria-label="FeeDefault"
+                          aria-label="ค่าเริ่มต้น"
                         >
                           <Star
                             className={`h-4 w-4 ${
@@ -1585,8 +1585,8 @@ function WorkOrderTab() {
                           className="h-8 w-8 p-0"
                           onClick={() => duplicateMutation.mutate(tpl)}
                           disabled={duplicateMutation.isPending}
-                          title="Copy"
-                          aria-label="Copy"
+                          title="คัดลอก"
+                          aria-label="คัดลอก"
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
@@ -1608,9 +1608,9 @@ function WorkOrderTab() {
                           disabled={tpl.isFixed || tpl.isDefault}
                           title={
                             tpl.isFixed
-                              ? 'NoCanDeleteTemplateofSystem'
+                              ? 'ลบเทมเพลตของระบบไม่ได้'
                               : tpl.isDefault
-                                ? 'NoCanDeleteTemplateFeeDefault'
+                                ? 'ลบเทมเพลตเริ่มต้นไม่ได้'
                                 : t('common.delete')
                           }
                           aria-label={t('settings.delete')}
@@ -1639,13 +1639,13 @@ function WorkOrderTab() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>ConfirmDeleteTemplate</AlertDialogTitle>
+              <AlertDialogTitle>ยืนยันการลบเทมเพลต</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sureorthatMustDeleteTemplate{' '}
+                คุณแน่ใจหรือไม่ว่าต้องการลบเทมเพลต{' '}
                 <span className="font-medium text-foreground">
                   &quot;{deleteTarget?.name}&quot;
                 </span>
-                ? DoNoCanback
+                ? การกระทำนี้ย้อนกลับไม่ได้
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1662,10 +1662,10 @@ function WorkOrderTab() {
                 {deleteMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Delete…
+                    ลบ…
                   </>
                 ) : (
-                  'DeleteTemplate'
+                  'ลบเทมเพลต'
                 )}
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -1710,13 +1710,13 @@ export function TemplatesPage() {
         // invalidate templates queries so each tab's list re-fetches,
         // and stay on the current Templates page so the user can verify
         // the new templates populated. Toast provides immediate feedback.
-        toast.success(data.message || 'InstallTemplateDefaultSuccess')
+        toast.success(data.message || 'ติดตั้งเทมเพลตเริ่มต้นสำเร็จ')
         await queryClient.invalidateQueries({ queryKey: ['templates'] })
         await queryClient.invalidateQueries({ queryKey: ['sticker-templates'] })
         await queryClient.invalidateQueries({ queryKey: ['document-templates'] })
       } else {
         setSeedResult(`✗ ${data.error || 'Seed failed'}`)
-        toast.error(data.error || 'InstallTemplateDefaultFailed')
+        toast.error(data.error || 'ติดตั้งเทมเพลตเริ่มต้นไม่สำเร็จ')
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -1732,7 +1732,7 @@ export function TemplatesPage() {
       {/* Compact header — h1 + seed button on one row, tabs right below */}
       <div className="flex flex-shrink-0 items-center justify-between gap-3">
         <h1 className="text-lg font-bold tracking-tight md:text-xl">
-          📄 Template
+          📄 เทมเพลต
         </h1>
         <Button
           onClick={handleSeed}
@@ -1742,7 +1742,7 @@ export function TemplatesPage() {
           className="shrink-0 border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10"
         >
           <Sparkles className={`mr-1.5 h-4 w-4 ${seeding ? 'animate-pulse' : ''}`} />
-          {seeding ? 'Install...' : 'InstallTemplateDefault'}
+          {seeding ? 'กำลังติดตั้ง...' : 'ติดตั้งเทมเพลตเริ่มต้น'}
         </Button>
       </div>
 
@@ -1804,35 +1804,35 @@ export function TemplatesPage() {
       <Card className="flex-shrink-0">
         <CardContent className="space-y-2 p-4 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">
-            💡 HowActiveTemplate
+            💡 วิธีใช้งานเทมเพลต
           </p>
           <ul className="ml-4 list-disc space-y-1 text-xs">
             <li>
-              <strong>Sticker</strong> — labelsmallForattachDevice (75×36mm, 50×30mm) —
-              Click &quot;CreateNew&quot; SelectSizePaper
+              <strong>สติกเกอร์</strong> — ฉลากเล็กสำหรับติดอุปกรณ์ (75×36mm, 50×30mm) —
+              กด &quot;สร้างใหม่&quot; เลือกขนาดกระดาษ
             </li>
             <li>
-              <strong>Document PDF</strong> — DocumentSize A4/A3 e.g. ReportMeteritemmonths
+              <strong>เอกสาร PDF</strong> — ขนาดกระดาษ A4/A3 เช่น รายงานมิเตอร์รายเดือน
             </li>
             <li>
-              <strong>Work Order</strong> — Repair Ticket / ticketWithdraw / ticketReceive / Purchase Order —
-              Has Visual Editor embedinfront
+              <strong>ใบงาน</strong> — ใบแจ้งซ่อม / ใบเบิกอะไหล่ / ใบรับเครื่อง / ใบสั่งซื้อ —
+              มีหน้าจอออกแบบในตัว
             </li>
             <li>
-              Template <Badge variant="outline" className="mx-1 px-1 py-0 text-[10px] border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">System</Badge>
-              isFeeDefaultatSystemCreateKeep — Edit แ่NoCanDelete (Copy)
+              เทมเพลต <Badge variant="outline" className="mx-1 px-1 py-0 text-[10px] border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">ระบบ</Badge>
+              เป็นเทมเพลตของระบบที่สร้างไว้ตั้งแต่ติดตั้ง — แก้ไขได้ แต่ลบไม่ได้ (คัดลอกได้)
             </li>
             <li>
-              Template <Badge variant="outline" className="mx-1 px-1 py-0 text-[10px] border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">Custom</Badge>
-              isTemplateatUserCreateup — DeletebyMust
+              เทมเพลต <Badge variant="outline" className="mx-1 px-1 py-0 text-[10px] border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">กำหนดเอง</Badge>
+              เป็นเทมเพลตที่ผู้ใช้สร้างเอง — ลบได้
             </li>
             <li>
-              button <Star className="inline h-3 w-3 fill-orange-500 text-orange-500" />{' '}
-              forSetasFeeDefault — TemplateDefaultwillcorrectSelectAutoWhenClickPrint
+              ปุ่ม <Star className="inline h-3 w-3 fill-orange-500 text-orange-500" />{' '}
+              สำหรับตั้งเป็นค่าเริ่มต้น — เทมเพลตเริ่มต้นจะถูกเลือกอัตโนมัติเมื่อกดพิมพ์
             </li>
             <li>
-              buttonPrintinpointatActivereal: TableDevice → &quot;Sticker&quot;,
-              Work Order → &quot;PrintWork Order&quot;
+              ปุ่มพิมพ์ในจุดที่ใช้จริง: ตารางอุปกรณ์ → &quot;สติกเกอร์&quot;,
+              ใบงาน → &quot;พิมพ์ใบงาน&quot;
             </li>
           </ul>
         </CardContent>
@@ -1844,7 +1844,7 @@ export function TemplatesPage() {
       {tab !== 'work-order' && (
         <div className="flex flex-wrap items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-3 text-xs dark:border-slate-700 dark:bg-slate-900/30">
           <span className="text-muted-foreground">
-            MustCloseEditorType็frontscreen?
+            ต้องการเปิดหน้าออกแบบประเภทนี้?
           </span>
           <Button
             variant="outline"
@@ -1852,7 +1852,7 @@ export function TemplatesPage() {
             className="h-7 text-xs"
             onClick={() => setActivePage('itam-sticker-editor')}
           >
-            <ArrowLeft className="mr-1 h-3 w-3 rotate-180" /> EditorSticker
+            <ArrowLeft className="mr-1 h-3 w-3 rotate-180" /> หน้าออกแบบสติกเกอร์
           </Button>
           <Button
             variant="outline"
@@ -1860,7 +1860,7 @@ export function TemplatesPage() {
             className="h-7 text-xs"
             onClick={() => setActivePage('itam-document-editor')}
           >
-            <ArrowLeft className="mr-1 h-3 w-3 rotate-180" /> EditorDocument PDF
+            <ArrowLeft className="mr-1 h-3 w-3 rotate-180" /> หน้าออกแบบเอกสาร PDF
           </Button>
         </div>
       )}

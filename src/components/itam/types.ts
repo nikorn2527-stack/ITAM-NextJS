@@ -293,9 +293,24 @@ export interface SearchSiteResult {
   title: string
   subtitle: string
 }
+// QA-ROUND-G feature: work-order + stock results from /api/search
+export interface SearchWorkOrderResult {
+  type: 'workorder'
+  id: string
+  title: string
+  subtitle: string
+}
+export interface SearchStockResult {
+  type: 'stock'
+  id: string
+  title: string
+  subtitle: string
+}
 export interface SearchResults {
   devices: SearchDeviceResult[]
   master: SearchMasterResult[]
+  workOrders: SearchWorkOrderResult[]
+  stock: SearchStockResult[]
   meter: SearchMeterResult[]
   audit: SearchAuditResult[]
   sites: SearchSiteResult[]

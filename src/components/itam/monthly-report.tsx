@@ -88,18 +88,18 @@ import { useT, useLang } from '@/store/i18n-store'
 
 // Column definitions for monthly report tables
 const MONTHLY_REPORT_COLUMNS: ColumnDef[] = [
-  { key: 'assetCode', label: 'CodeDevice', default: true },
+  { key: 'assetCode', label: 'รหัสอุปกรณ์', default: true },
   { key: 'name', label: 'common.name', default: true },
   { key: 'brand', label: 'common.brand', default: true },
   { key: 'model', label: 'common.model', default: true },
   { key: 'serialNumber', label: 'common.serial', default: true },
   { key: 'site', label: 'common.site', default: true },
-  { key: 'department', label: 'Dept', default: false },
-  { key: 'meterBw', label: 'Meter B&W', default: false },
+  { key: 'department', label: 'แผนก', default: false },
+  { key: 'meterBw', label: 'มิเตอร์ขาว-ดำ', default: false },
   { key: 'meterColor', label: 'devices.field.last_meter_color', default: false },
-  { key: 'pagesBw', label: 'sheets B&W', default: false },
-  { key: 'pagesColor', label: 'sheets Color', default: false },
-  { key: 'cost', label: 'FeeUsepay', default: false },
+  { key: 'pagesBw', label: 'แผ่นขาว-ดำ', default: false },
+  { key: 'pagesColor', label: 'แผ่นสี', default: false },
+  { key: 'cost', label: 'ค่าใช้จ่าย', default: false },
   { key: 'status', label: 'common.status', default: false },
 ]
 import {  Wrench,
@@ -223,11 +223,11 @@ interface DeviceRow {
 
 // ── Constants ──────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Pending',
-  IN_PROGRESS: 'Repair',
-  WAITING_PARTS: 'PendingParts',
-  COMPLETED: 'Done',
-  CANCELLED: 'Cancel',
+  PENDING: 'รอดำเนินการ',
+  IN_PROGRESS: 'กำลังซ่อม',
+  WAITING_PARTS: 'รออะไหล่',
+  COMPLETED: 'เสร็จแล้ว',
+  CANCELLED: 'ยกเลิก',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -246,11 +246,11 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 const STATUS_LABELS_DEV: Record<string, string> = {
-  Active: 'Active',
-  Repair: 'Repair',
-  Retired: 'Reduceschedule',
-  Spare: 'Spare',
-  Inactive: 'Inactive',
+  Active: 'ใช้งานอยู่',
+  Repair: 'ส่งซ่อม',
+  Retired: 'เกษียณ',
+  Spare: 'สำรอง',
+  Inactive: 'ไม่ใช้งาน',
 }
 
 const DEVICE_STATUS_COLORS: Record<string, string> = {
@@ -262,21 +262,21 @@ const DEVICE_STATUS_COLORS: Record<string, string> = {
 }
 
 const DEVICE_TYPE_LABELS: Record<string, string> = {
-  PRINTER: 'unitsPrint',
-  SCANNER: 'Scan',
-  COMPUTER: 'computer',
-  NETWORK: 'DeviceNetwork',
-  OTHER: 'Other ',
+  PRINTER: 'เครื่องพิมพ์',
+  SCANNER: 'เครื่องสแกน',
+  COMPUTER: 'คอมพิวเตอร์',
+  NETWORK: 'อุปกรณ์เครือข่าย',
+  OTHER: 'อื่น ๆ',
 }
 
 const READING_TYPE_LABELS: Record<string, string> = {
-  MONTHLY: 'itemmonths',
-  INITIAL: 'Default',
-  FINAL: 'End',
-  RESET: 'Reset',
-  CHECKOUT: 'SendAssign',
-  SEND_REPAIR: 'Repair',
-  RETURN: 'Receivereturn',
+  MONTHLY: 'ประจำเดือน',
+  INITIAL: 'เริ่มต้น',
+  FINAL: 'สิ้นสุด',
+  RESET: 'RESET',
+  CHECKOUT: 'เช็คเอาท์',
+  SEND_REPAIR: 'ส่งซ่อม',
+  RETURN: 'คืนเครื่อง',
 }
 
 function currentMonthValue(): string {
@@ -357,7 +357,7 @@ function buildSpecialFeeApprovalHTML(opts: {
     Map<string, typeof rows>
   >()
   for (const r of rows) {
-    const staff = r.assignedTo?.trim() || '— StillNoAssign'
+    const staff = r.assignedTo?.trim() || '— ยังไม่ได้มอบหมาย'
     const site = r.site?.trim() || '—'
     if (!byStaff.has(staff)) byStaff.set(staff, new Map())
     const siteMap = byStaff.get(staff)!
@@ -385,24 +385,24 @@ function buildSpecialFeeApprovalHTML(opts: {
   const bodyHtml: string[] = []
   if (staffEntries.length === 0) {
     bodyHtml.push(
-      `<div class="empty">NoneSpecial (Has cost) inmonthsatSelect</div>`,
+      `<div class="empty">ไม่มีรายการพิเศษ (ที่มีค่าใช้จ่าย) ในเดือนที่เลือก</div>`,
     )
   } else {
     for (const s of staffEntries) {
       bodyHtml.push(
         `<div class="block staff-group">` +
-          `<h3 class="staff-h">👷 ${escHtml(s.staff)} <span class="badge-count">${s.total} case</span></h3>`,
+          `<h3 class="staff-h">👷 ${escHtml(s.staff)} <span class="badge-count">${s.total} รายการ</span></h3>`,
       )
       for (const sl of s.siteList) {
         bodyHtml.push(
           `<div class="site-group">` +
-            `<h4 class="site-h">🏢 Site: ${escHtml(sl.site)} <span class="badge-count">${sl.list.length} case</span></h4>` +
+            `<h4 class="site-h">🏢 ไซต์: ${escHtml(sl.site)} <span class="badge-count">${sl.list.length} รายการ</span></h4>` +
             `<table class="data-table">` +
             `<thead><tr>` +
-            `<th style="width:90px">No.Work Order</th>` +
-            `<th>Subject</th>` +
-            `<th style="width:120px">{t('import.col_date')}</th>` +
-            `<th style="width:100px">{t('settings.col.status')}</th>` +
+            `<th style="width:90px">เลขที่ใบงาน</th>` +
+            `<th>เรื่อง</th>` +
+            `<th style="width:120px">วันที่</th>` +
+            `<th style="width:100px">สถานะ</th>` +
             `</tr></thead><tbody>`,
         )
         for (const r of sl.list) {
@@ -431,7 +431,7 @@ function buildSpecialFeeApprovalHTML(opts: {
   // Per-staff summary table (separate page-break-avoid block).
   const summaryRowsHtml =
     staffEntries.length === 0
-      ? '<tr><td colspan="3" class="muted">No data</td></tr>'
+      ? '<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>'
       : staffEntries
           .map(
             (s) =>
@@ -445,7 +445,7 @@ function buildSpecialFeeApprovalHTML(opts: {
 <html lang="th">
 <head>
 <meta charset="UTF-8" />
-<title>ReportSpecial (Approve) ${escHtml(monthLabel)}</title>
+<title>รายงานค่าใช้จ่ายพิเศษ (อนุมัติ) ${escHtml(monthLabel)}</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -658,50 +658,50 @@ function buildSpecialFeeApprovalHTML(opts: {
     <div class="header">
       <div class="logo">💰</div>
       <div class="title-block">
-        <h1>ReportSpecial (Approve)</h1>
-        <div class="subtitle">Special Fee Work Orders • SystemManageAssetIT</div>
+        <h1>รายงานค่าใช้จ่ายพิเศษ (อนุมัติ)</h1>
+        <div class="subtitle">ใบงานค่าใช้จ่ายพิเศษ • ระบบบริหารจัดการสินทรัพย์ IT</div>
       </div>
       <div class="meta">
-        <strong>months: ${escHtml(monthLabel)}</strong><br/>
-        Site: ${escHtml(siteLabel)}<br/>
-        PrintWhen: ${escHtml(todayLabel)}
+        <strong>เดือน: ${escHtml(monthLabel)}</strong><br/>
+        ไซต์: ${escHtml(siteLabel)}<br/>
+        พิมพ์เมื่อ: ${escHtml(todayLabel)}
       </div>
     </div>
 
     <div class="kpi-grid">
       <div class="kpi">
-        <div class="kpi-label">caseAll</div>
+        <div class="kpi-label">รายการทั้งหมด</div>
         <div class="kpi-value">${totalCases}</div>
-        <div class="kpi-unit">case</div>
+        <div class="kpi-unit">รายการ</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">QuantityTechnician</div>
+        <div class="kpi-label">จำนวนช่าง</div>
         <div class="kpi-value">${totalStaff}</div>
-        <div class="kpi-unit">person</div>
+        <div class="kpi-unit">คน</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">QuantitySite</div>
+        <div class="kpi-label">จำนวนไซต์</div>
         <div class="kpi-value">${totalSites}</div>
-        <div class="kpi-unit">Site</div>
+        <div class="kpi-unit">ไซต์</div>
       </div>
     </div>
 
-    <h2 class="section-h">DetailsSpecial ByTechnician/Site</h2>
+    <h2 class="section-h">รายละเอียดค่าใช้จ่ายพิเศษ แยกตามช่าง/ไซต์</h2>
     ${bodyHtml.join('')}
 
-    <h2 class="section-h">SummaryQuantitycase perTechnician</h2>
+    <h2 class="section-h">สรุปจำนวนรายการต่อช่าง</h2>
     <table class="data-table">
       <thead>
         <tr>
-          <th>{t('role.staff')}</th>
-          <th style="text-align:right">Quantitycase</th>
-          <th style="text-align:right">% ofAll</th>
+          <th>ช่าง/เจ้าหน้าที่</th>
+          <th style="text-align:right">จำนวนรายการ</th>
+          <th style="text-align:right">% ของทั้งหมด</th>
         </tr>
       </thead>
       <tbody>${summaryRowsHtml}</tbody>
       <tfoot>
         <tr style="border-top:2px solid #f97316">
-          <td style="font-weight:700">TotalAll</td>
+          <td style="font-weight:700">รวมทั้งหมด</td>
           <td style="text-align:right;font-weight:700">${totalCases}</td>
           <td style="text-align:right;font-weight:700">100%</td>
         </tr>
@@ -709,14 +709,14 @@ function buildSpecialFeeApprovalHTML(opts: {
     </table>
 
     <div class="footer">
-      <span>DocumentCreatebySystemManageAsset — Special (Has cost)</span>
-      <span>PrintWhen ${escHtml(todayLabel)}</span>
+      <span>เอกสารสร้างโดยระบบบริหารจัดการสินทรัพย์ — พิเศษ (มีค่าใช้จ่าย)</span>
+      <span>พิมพ์เมื่อ ${escHtml(todayLabel)}</span>
     </div>
   </div>
 
   <div class="print-btn-bar">
-    <button type="button" onclick="window.print()">🖨 Print</button>
-    <button type="button" class="secondary" onclick="window.close()">Close</button>
+    <button type="button" onclick="window.print()">🖨 พิมพ์</button>
+    <button type="button" class="secondary" onclick="window.close()">ปิด</button>
   </div>
 </body>
 </html>`
@@ -794,7 +794,7 @@ export function MonthlyReport() {
         const res = await fetch(`/api/reports/monthly?${params.toString()}`)
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
-          throw new Error(j.error ?? 'LoadReportNoSuccess')
+          throw new Error(j.error ?? 'โหลดรายงานไม่สำเร็จ')
         }
         const json = await res.json()
         return json as MonthlyReportData
@@ -805,7 +805,7 @@ export function MonthlyReport() {
   React.useEffect(() => {
     if (error) {
       toast.error(
-        error instanceof Error ? error.message : 'LoadReportNoSuccess',
+        error instanceof Error ? error.message : 'โหลดรายงานไม่สำเร็จ',
       )
     }
   }, [error])
@@ -822,7 +822,7 @@ export function MonthlyReport() {
 
   async function openSpecialFeeApprovalReport() {
     if (!month) {
-      toast.error('PleaseSelectmonths')
+      toast.error('กรุณาเลือกเดือน')
       return
     }
     setApprovalBusy(true)
@@ -832,7 +832,7 @@ export function MonthlyReport() {
       const year = parseInt(yStr, 10)
       const mon = parseInt(mStr, 10)
       if (!year || !mon) {
-        toast.error('imageTypemonthsNocorrectMust')
+        toast.error('รูปแบบเดือนไม่ถูกต้อง')
         return
       }
       const from = `${yStr}-${mStr}-01`
@@ -848,7 +848,7 @@ export function MonthlyReport() {
       const res = await fetch(url, { headers: getAuthHeaders() })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j?.error?.message ?? 'LoadDataNoSuccess')
+        throw new Error(j?.error?.message ?? 'โหลดข้อมูลไม่สำเร็จ')
       }
       const json = await res.json()
       const rows = (json?.data ?? []) as Array<{
@@ -872,17 +872,17 @@ export function MonthlyReport() {
       const html = buildSpecialFeeApprovalHTML({
         rows: filtered,
         monthLabel: formatMonthLabel(month, lang),
-        siteLabel: site === 'all' ? 'AllSite' : `Site ${site}`,
+        siteLabel: site === 'all' ? 'ทุกไซต์' : `ไซต์ ${site}`,
       }, lang)
       // ── Inject into hidden print container + fire window.print()
       // on the SAME page (Task ID: PRINT-MEDIA-QUERY-012). ──
       setPrintHtml(html)
       setTimeout(() => window.print(), 50)
       setTimeout(() => setPrintHtml(''), 1000)
-      toast.success('ClosefrontdifferentPrint…')
+      toast.success('กำลังเปิดหน้าพิมพ์…')
     } catch (err) {
       console.error('openSpecialFeeApprovalReport', err)
-      toast.error(err instanceof Error ? err.message : 'CloseReportNoSuccess')
+      toast.error(err instanceof Error ? err.message : 'เปิดรายงานไม่สำเร็จ')
     } finally {
       setApprovalBusy(false)
     }
@@ -892,32 +892,32 @@ export function MonthlyReport() {
   function handleExportCSV() {
     if (!data) return
     const rows: string[][] = []
-    rows.push(['Reportitemmonths', formatMonthLabel(data.month, lang)])
+    rows.push(['รายงานรายเดือน', formatMonthLabel(data.month, lang)])
     rows.push([t('common.site'), site === 'all' ? t('common.all') : site])
     rows.push([t('common.type'), reportType])
-    rows.push(['CreateWhen', data.generatedAt ? new Date(data.generatedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '—'])
+    rows.push(['สร้างเมื่อ', data.generatedAt ? new Date(data.generatedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '—'])
     rows.push([])
 
     if (data.workOrders) {
-      rows.push(['==== Work Order ===='])
+      rows.push(['==== ใบงาน ===='])
       rows.push([t('common.all'), String(data.workOrders.total)])
       rows.push([t('common.status'), t('common.quantity')])
       for (const [k, v] of Object.entries(data.workOrders.byStatus)) {
         rows.push([STATUS_LABELS[k] ?? k, String(v)])
       }
-      rows.push(['priorityUrgent', t('common.quantity')])
+      rows.push(['ความเร่งด่วน', t('common.quantity')])
       for (const [k, v] of Object.entries(data.workOrders.byPriority)) {
         rows.push([k, String(v)])
       }
-      rows.push(['Average', String(data.workOrders.avgRating ?? '-')])
-      rows.push(['TimeanswerAverage', data.meta.avgResponseTimeLabel])
+      rows.push(['คะแนนเฉลี่ย', String(data.workOrders.avgRating ?? '-')])
+      rows.push(['เวลาตอบกลับเฉลี่ย', data.meta.avgResponseTimeLabel])
       rows.push([])
-      rows.push(['SubjectPopular', t('common.quantity')])
+      rows.push(['หัวข้อยอดนิยม', t('common.quantity')])
       for (const s of data.workOrders.bySubject) {
         rows.push([s.subject, String(s.count)])
       }
       rows.push([])
-      rows.push([t('role.staff'), 'Receive', 'Done'])
+      rows.push([t('role.staff'), 'รับ', 'เสร็จ'])
       for (const s of data.workOrders.byStaff) {
         rows.push([s.name, String(s.count), String(s.completed)])
       }
@@ -925,12 +925,12 @@ export function MonthlyReport() {
     }
 
     if (data.stock) {
-      rows.push(['==== Stock ===='])
-      rows.push(['Stock In', String(data.stock.totalIn)])
-      rows.push(['Stock Out', String(data.stock.totalOut)])
-      rows.push(['ValueTotal', formatBaht(data.stock.totalValue, lang)])
+      rows.push(['==== สต๊อก ===='])
+      rows.push(['รับเข้า', String(data.stock.totalIn)])
+      rows.push(['จ่ายออก', String(data.stock.totalOut)])
+      rows.push(['มูลค่ารวม', formatBaht(data.stock.totalValue, lang)])
       rows.push([])
-      rows.push(['itemPopular', t('common.code'), t('common.quantity'), t('common.type')])
+      rows.push(['รายการยอดนิยม', t('common.code'), t('common.quantity'), t('common.type')])
       for (const t of data.stock.topItems) {
         rows.push([
           t.productName,
@@ -940,7 +940,7 @@ export function MonthlyReport() {
         ])
       }
       rows.push([])
-      rows.push(['itemofRemainingless', t('common.code'), 'Remaining', 'stepLow', t('common.unit')])
+      rows.push(['รายการคงเหลือต่ำกว่าขั้นต่ำ', t('common.code'), 'คงเหลือ', 'ขั้นต่ำ', t('common.unit')])
       for (const l of data.stock.lowStockItems) {
         rows.push([
           l.productName,
@@ -954,9 +954,9 @@ export function MonthlyReport() {
     }
 
     if (data.devices) {
-      rows.push(['==== Device ===='])
+      rows.push(['==== อุปกรณ์ ===='])
       rows.push([t('common.all'), String(data.devices.total)])
-      rows.push(['AddNewinmonths', String(data.devices.newDevices)])
+      rows.push(['เพิ่มใหม่ในเดือน', String(data.devices.newDevices)])
       rows.push([t('common.status'), t('common.quantity')])
       for (const [k, v] of Object.entries(data.devices.byStatus)) {
         rows.push([STATUS_LABELS_DEV[k] ?? k, String(v)])
@@ -989,7 +989,7 @@ export function MonthlyReport() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-    toast.success('Export CSV ')
+    toast.success('ส่งออก CSV แล้ว')
   }
 
   // ============================================================
@@ -1145,18 +1145,18 @@ export function MonthlyReport() {
 
       paperSection = `
         <section class="block">
-          <h2>① ReportSummaryUsePaper</h2>
+          <h2>① รายงานสรุปการใช้กระดาษ</h2>
           <div class="kpi-grid">
-            <div class="kpi"><div class="kpi-label">UsePaperwhite</div><div class="kpi-value">${totalBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">UsePaperColor</div><div class="kpi-value">${totalColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">TotalAll</div><div class="kpi-value accent">${totalPages.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">QuantityunitsatReadMeter</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">units</div></div>
+            <div class="kpi"><div class="kpi-label">กระดาษขาว-ดำ</div><div class="kpi-value">${totalBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">กระดาษสี</div><div class="kpi-value">${totalColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">รวมทั้งหมด</div><div class="kpi-value accent">${totalPages.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">จำนวนเครื่องที่จดมิเตอร์</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">เครื่อง</div></div>
           </div>
           ${deviceRowsHtml ? `
             <table class="data-table">
-              <thead><tr><th>{t('devices.col.asset_code')}</th><th>Device</th><th style="text-align:right">white (sheets)</th><th style="text-align:right">Color (sheets)</th><th style="text-align:right">Total</th></tr></thead>
+              <thead><tr><th>รหัสอุปกรณ์</th><th>อุปกรณ์</th><th style="text-align:right">ขาว-ดำ (แผ่น)</th><th style="text-align:right">สี (แผ่น)</th><th style="text-align:right">รวม</th></tr></thead>
               <tbody>${deviceRowsHtml}</tbody>
-            </table>` : '<p class="muted">No dataReadMeterinmonths</p>'}
+            </table>` : '<p class="muted">ไม่มีข้อมูลจดมิเตอร์ในเดือนที่เลือก</p>'}
         </section>`
     }
 
@@ -1192,33 +1192,33 @@ export function MonthlyReport() {
       const newDevices = report.devices?.newDevices ?? 0
       deviceSection = `
         <section class="block">
-          <h2>② ReportStatusDevice</h2>
+          <h2>② รายงานสถานะอุปกรณ์</h2>
           <div class="kpi-grid">
-            <div class="kpi"><div class="kpi-label">DeviceAll</div><div class="kpi-value">${total}</div><div class="kpi-unit">units</div></div>
-            <div class="kpi"><div class="kpi-label">AddNewinmonths</div><div class="kpi-value accent">${newDevices}</div><div class="kpi-unit">units</div></div>
-            <div class="kpi"><div class="kpi-label">Statusatfound</div><div class="kpi-value">${byStatus.length}</div><div class="kpi-unit">Type</div></div>
-            <div class="kpi"><div class="kpi-label">Siteatfound</div><div class="kpi-value">${bySite.length}</div><div class="kpi-unit">Site</div></div>
+            <div class="kpi"><div class="kpi-label">อุปกรณ์ทั้งหมด</div><div class="kpi-value">${total}</div><div class="kpi-unit">เครื่อง</div></div>
+            <div class="kpi"><div class="kpi-label">เพิ่มใหม่ในเดือน</div><div class="kpi-value accent">${newDevices}</div><div class="kpi-unit">เครื่อง</div></div>
+            <div class="kpi"><div class="kpi-label">สถานะที่พบ</div><div class="kpi-value">${byStatus.length}</div><div class="kpi-unit">ประเภท</div></div>
+            <div class="kpi"><div class="kpi-label">ไซต์ที่พบ</div><div class="kpi-value">${bySite.length}</div><div class="kpi-unit">ไซต์</div></div>
           </div>
           <div class="two-col">
             <div>
-              <h3 class="sub-h">ByStatus</h3>
+              <h3 class="sub-h">ตามสถานะ</h3>
               <table class="data-table">
-                <thead><tr><th>{t('settings.col.status')}</th><th style="text-align:right">Quantity</th><th style="text-align:right">%</th></tr></thead>
-                <tbody>${statusRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}</tbody>
+                <thead><tr><th>สถานะ</th><th style="text-align:right">จำนวน</th><th style="text-align:right">%</th></tr></thead>
+                <tbody>${statusRows || '<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
               </table>
             </div>
             <div>
-              <h3 class="sub-h">ByType</h3>
+              <h3 class="sub-h">ตามประเภท</h3>
               <table class="data-table">
-                <thead><tr><th>Type</th><th style="text-align:right">Quantity</th><th style="text-align:right">%</th></tr></thead>
-                <tbody>${typeRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}</tbody>
+                <thead><tr><th>ประเภท</th><th style="text-align:right">จำนวน</th><th style="text-align:right">%</th></tr></thead>
+                <tbody>${typeRows || '<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
               </table>
             </div>
           </div>
-          <h3 class="sub-h">BySite</h3>
+          <h3 class="sub-h">ตามไซต์</h3>
           <table class="data-table">
-            <thead><tr><th>Site</th><th style="text-align:right">Quantity</th><th style="text-align:right">%</th></tr></thead>
-            <tbody>${siteRowsHtml || '<tr><td colspan="3" class="muted">No data</td></tr>'}</tbody>
+            <thead><tr><th>ไซต์</th><th style="text-align:right">จำนวน</th><th style="text-align:right">%</th></tr></thead>
+            <tbody>${siteRowsHtml || '<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
           </table>
         </section>`
     }
@@ -1250,38 +1250,38 @@ export function MonthlyReport() {
       )
       woSection = `
         <section class="block">
-          <h2>③ ReportWork OrderRepair Request</h2>
+          <h2>③ รายงานใบแจ้งซ่อม</h2>
           <div class="kpi-grid">
-            <div class="kpi"><div class="kpi-label">Work OrderAll</div><div class="kpi-value">${wo.total}</div><div class="kpi-unit">ticket</div></div>
-            <div class="kpi"><div class="kpi-label">Done</div><div class="kpi-value accent">${wo.byStatus.COMPLETED ?? 0}</div><div class="kpi-unit">ticket</div></div>
-            <div class="kpi"><div class="kpi-label">Average</div><div class="kpi-value">${wo.avgRating !== null ? wo.avgRating.toFixed(2) : '—'}</div><div class="kpi-unit">star</div></div>
-            <div class="kpi"><div class="kpi-label">TimeanswerAverage</div><div class="kpi-value" style="font-size:18px">${escHtml(report.meta.avgResponseTimeLabel)}</div><div class="kpi-unit">Report → Assign</div></div>
+            <div class="kpi"><div class="kpi-label">ใบงานทั้งหมด</div><div class="kpi-value">${wo.total}</div><div class="kpi-unit">ใบ</div></div>
+            <div class="kpi"><div class="kpi-label">เสร็จสิ้น</div><div class="kpi-value accent">${wo.byStatus.COMPLETED ?? 0}</div><div class="kpi-unit">ใบ</div></div>
+            <div class="kpi"><div class="kpi-label">คะแนนเฉลี่ย</div><div class="kpi-value">${wo.avgRating !== null ? wo.avgRating.toFixed(2) : '—'}</div><div class="kpi-unit">ดาว</div></div>
+            <div class="kpi"><div class="kpi-label">เวลาตอบกลับเฉลี่ย</div><div class="kpi-value" style="font-size:18px">${escHtml(report.meta.avgResponseTimeLabel)}</div><div class="kpi-unit">แจ้ง → มอบหมาย</div></div>
           </div>
           <div class="two-col">
             <div>
-              <h3 class="sub-h">ByStatus</h3>
+              <h3 class="sub-h">ตามสถานะ</h3>
               <table class="data-table">
-                <thead><tr><th>{t('settings.col.status')}</th><th style="text-align:right">Quantity</th></tr></thead>
-                <tbody>${statusRows || '<tr><td colspan="2" class="muted">No data</td></tr>'}</tbody>
+                <thead><tr><th>สถานะ</th><th style="text-align:right">จำนวน</th></tr></thead>
+                <tbody>${statusRows || '<tr><td colspan="2" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
               </table>
             </div>
             <div>
-              <h3 class="sub-h">BypriorityUrgent</h3>
+              <h3 class="sub-h">ตามความเร่งด่วน</h3>
               <table class="data-table">
-                <thead><tr><th>priorityUrgent</th><th style="text-align:right">Quantity</th></tr></thead>
-                <tbody>${priorityRows || '<tr><td colspan="2" class="muted">No data</td></tr>'}</tbody>
+                <thead><tr><th>ความเร่งด่วน</th><th style="text-align:right">จำนวน</th></tr></thead>
+                <tbody>${priorityRows || '<tr><td colspan="2" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
               </table>
             </div>
           </div>
-          <h3 class="sub-h">ResultWorkTechnician</h3>
+          <h3 class="sub-h">ผลงานช่าง</h3>
           <table class="data-table">
-            <thead><tr><th>{t('role.staff')}</th><th style="text-align:right">Receive</th><th style="text-align:right">Done</th><th style="text-align:right">%Done</th></tr></thead>
-            <tbody>${staffRows || '<tr><td colspan="4" class="muted">No data</td></tr>'}</tbody>
+            <thead><tr><th>ช่าง/เจ้าหน้าที่</th><th style="text-align:right">รับ</th><th style="text-align:right">เสร็จ</th><th style="text-align:right">% เสร็จ</th></tr></thead>
+            <tbody>${staffRows || '<tr><td colspan="4" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
           </table>
-          <h3 class="sub-h">SubjectPopular (Top 15)</h3>
+          <h3 class="sub-h">หัวข้อยอดนิยม (Top 15)</h3>
           <table class="data-table">
-            <thead><tr><th>Subject</th><th style="text-align:right">Quantity</th></tr></thead>
-            <tbody>${subjectRows || '<tr><td colspan="2" class="muted">No data</td></tr>'}</tbody>
+            <thead><tr><th>หัวข้อ</th><th style="text-align:right">จำนวน</th></tr></thead>
+            <tbody>${subjectRows || '<tr><td colspan="2" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
           </table>
         </section>`
     }
@@ -1294,7 +1294,7 @@ export function MonthlyReport() {
         st.topItems.slice(0, 20).map((t) => [
           t.productName,
           t.productCode ?? '—',
-          t.type === 'IN' ? 'Stock In' : t.type === 'OUT' ? 'Stock Out' : t.type === 'ADJUST' ? 'Update' : t.type,
+          t.type === 'IN' ? 'รับเข้า' : t.type === 'OUT' ? 'จ่ายออก' : t.type === 'ADJUST' ? 'ปรับปรุง' : t.type,
           t.quantity,
         ]),
         ['l', 'l', 'c', 'r'],
@@ -1311,22 +1311,22 @@ export function MonthlyReport() {
       )
       stockSection = `
         <section class="block">
-          <h2>④ ReportStock</h2>
+          <h2>④ รายงานสต๊อก</h2>
           <div class="kpi-grid">
-            <div class="kpi"><div class="kpi-label">Stock In</div><div class="kpi-value accent">${st.totalIn}</div><div class="kpi-unit">Unit</div></div>
-            <div class="kpi"><div class="kpi-label">Stock Out</div><div class="kpi-value">${st.totalOut}</div><div class="kpi-unit">Unit</div></div>
-            <div class="kpi"><div class="kpi-label">ValueTotal</div><div class="kpi-value" style="font-size:18px">${escHtml(formatBaht(st.totalValue, lang))}</div><div class="kpi-unit">THB</div></div>
-            <div class="kpi"><div class="kpi-label">ofRemainingless</div><div class="kpi-value" style="color:#ef4444">${st.lowStockItems.length}</div><div class="kpi-unit">item</div></div>
+            <div class="kpi"><div class="kpi-label">รับเข้า</div><div class="kpi-value accent">${st.totalIn}</div><div class="kpi-unit">หน่วย</div></div>
+            <div class="kpi"><div class="kpi-label">จ่ายออก</div><div class="kpi-value">${st.totalOut}</div><div class="kpi-unit">หน่วย</div></div>
+            <div class="kpi"><div class="kpi-label">มูลค่ารวม</div><div class="kpi-value" style="font-size:18px">${escHtml(formatBaht(st.totalValue, lang))}</div><div class="kpi-unit">บาท</div></div>
+            <div class="kpi"><div class="kpi-label">คงเหลือต่ำกว่าขั้นต่ำ</div><div class="kpi-value" style="color:#ef4444">${st.lowStockItems.length}</div><div class="kpi-unit">รายการ</div></div>
           </div>
-          <h3 class="sub-h">itemStockPopular (Top 20)</h3>
+          <h3 class="sub-h">รายการสต๊อกยอดนิยม (Top 20)</h3>
           <table class="data-table">
-            <thead><tr><th>Product</th><th>Code</th><th style="text-align:center">Type</th><th style="text-align:right">Quantity</th></tr></thead>
-            <tbody>${topRows || '<tr><td colspan="4" class="muted">Noneitem</td></tr>'}</tbody>
+            <thead><tr><th>สินค้า</th><th>รหัส</th><th style="text-align:center">ประเภท</th><th style="text-align:right">จำนวน</th></tr></thead>
+            <tbody>${topRows || '<tr><td colspan="4" class="muted">ไม่มีรายการ</td></tr>'}</tbody>
           </table>
-          <h3 class="sub-h">itemofRemainingless (Lowper stepLow)</h3>
+          <h3 class="sub-h">รายการคงเหลือต่ำกว่าขั้นต่ำ</h3>
           <table class="data-table">
-            <thead><tr><th>Product</th><th>Code</th><th style="text-align:right">Remaining</th><th style="text-align:right">stepLow</th><th style="text-align:center">Unit</th></tr></thead>
-            <tbody>${lowRows || '<tr><td colspan="5" class="muted">Noneitem — excellent!</td></tr>'}</tbody>
+            <thead><tr><th>สินค้า</th><th>รหัส</th><th style="text-align:right">คงเหลือ</th><th style="text-align:right">ขั้นต่ำ</th><th style="text-align:center">หน่วย</th></tr></thead>
+            <tbody>${lowRows || '<tr><td colspan="5" class="muted">ไม่มีรายการ — ยอดเยี่ยม!</td></tr>'}</tbody>
           </table>
         </section>`
     }
@@ -1360,23 +1360,23 @@ export function MonthlyReport() {
       const totalColor = meterRows.reduce((s, r) => s + (r.pagesColor || 0), 0)
       meterSection = `
         <section class="block">
-          <h2>⑤ ReportMeter</h2>
+          <h2>⑤ รายงานมิเตอร์</h2>
           <div class="kpi-grid">
-            <div class="kpi"><div class="kpi-label">QuantityitemReadMeter</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">item</div></div>
-            <div class="kpi"><div class="kpi-label">PaperwhiteTotal</div><div class="kpi-value">${totalBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">PaperColorTotal</div><div class="kpi-value">${totalColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">TotalAll</div><div class="kpi-value accent">${(totalBw + totalColor).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
+            <div class="kpi"><div class="kpi-label">จำนวนรายการจดมิเตอร์</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">รายการ</div></div>
+            <div class="kpi"><div class="kpi-label">กระดาษขาว-ดำรวม</div><div class="kpi-value">${totalBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">กระดาษสีรวม</div><div class="kpi-value">${totalColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">รวมทั้งหมด</div><div class="kpi-value accent">${(totalBw + totalColor).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">แผ่น</div></div>
           </div>
           <table class="data-table">
             <thead><tr>
-              <th>{t('devices.col.asset_code')}</th><th>Device</th><th>Site</th><th>DateRead</th>
-              <th style="text-align:right">Meter /</th>
-              <th style="text-align:right">{t('devices.field.last_meter_color')}</th>
-              <th style="text-align:right">sheetsatUse</th>
-              <th style="text-align:center">Type</th>
-              <th>PersonRead</th>
+              <th>รหัสอุปกรณ์</th><th>อุปกรณ์</th><th>ไซต์</th><th>วันที่จด</th>
+              <th style="text-align:right">มิเตอร์ขาว-ดำ</th>
+              <th style="text-align:right">มิเตอร์สี</th>
+              <th style="text-align:right">แผ่นที่ใช้</th>
+              <th style="text-align:center">ประเภท</th>
+              <th>ผู้จดมิเตอร์</th>
             </tr></thead>
-            <tbody>${meterRowsHtml || '<tr><td colspan="9" class="muted">No dataMeterinmonths</td></tr>'}</tbody>
+            <tbody>${meterRowsHtml || '<tr><td colspan="9" class="muted">ไม่มีข้อมูลมิเตอร์ในเดือนที่เลือก</td></tr>'}</tbody>
           </table>
         </section>`
     }
@@ -1386,7 +1386,7 @@ export function MonthlyReport() {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Reportitemmonths ${escHtml(monthLabel)}</title>
+<title>รายงานรายเดือน ${escHtml(monthLabel)}</title>
 <style>
   @page { size: A4; margin: 12mm; }
   * { box-sizing: border-box; }
@@ -1507,13 +1507,13 @@ export function MonthlyReport() {
     <div class="header">
       <div class="logo"></div>
       <div class="title-block">
-        <h1>Reportitemmonths</h1>
-        <div class="subtitle">Monthly Report • SystemManageAssetIT</div>
+        <h1>รายงานรายเดือน</h1>
+        <div class="subtitle">รายงานประจำเดือน • ระบบบริหารจัดการสินทรัพย์ IT</div>
       </div>
       <div class="meta">
-        <strong>months: ${escHtml(monthLabel)}</strong><br/>
-        Site: ${escHtml(siteLabel)}<br/>
-        CreateWhen: ${escHtml(generatedLabel)}
+        <strong>เดือน: ${escHtml(monthLabel)}</strong><br/>
+        ไซต์: ${escHtml(siteLabel)}<br/>
+        สร้างเมื่อ: ${escHtml(generatedLabel)}
       </div>
     </div>
 
@@ -1524,14 +1524,14 @@ export function MonthlyReport() {
     ${meterSection}
 
     <div class="footer">
-      <span>DocumentCreatebySystemManageAsset</span>
-      <span>PrintWhen ${escHtml(todayLabel)}</span>
+      <span>เอกสารสร้างโดยระบบบริหารจัดการสินทรัพย์</span>
+      <span>พิมพ์เมื่อ ${escHtml(todayLabel)}</span>
     </div>
   </div>
 
   <div class="print-btn-bar">
-    <button type="button" onclick="window.print()">🖨 Print</button>
-    <button type="button" class="secondary" onclick="window.close()">Close</button>
+    <button type="button" onclick="window.print()">🖨 พิมพ์</button>
+    <button type="button" class="secondary" onclick="window.close()">ปิด</button>
   </div>
 </body>
 </html>`
@@ -1540,12 +1540,12 @@ export function MonthlyReport() {
   /** Open the generated print HTML in a new window. */
   async function handlePrintReport() {
     if (!data) {
-      toast.error('No dataReport PleasePendingLoadDoneBefore')
+      toast.error('ยังไม่มีข้อมูลรายงาน กรุณารอให้โหลดเสร็จก่อน')
       return
     }
     const hasAny = Object.values(printSections).some(Boolean)
     if (!hasAny) {
-      toast.error('PleaseSelectLikeless 1 SectionatwillPrint')
+      toast.error('กรุณาเลือกอย่างน้อย 1 ส่วนที่จะพิมพ์')
       return
     }
     setPrintBusy(true)
@@ -1558,7 +1558,7 @@ export function MonthlyReport() {
       if (printSections.devices) {
         deviceRows = await fetchDevicesForPrint()
       }
-      const siteLabel = site === 'all' ? 'AllSite' : `Site ${site}`
+      const siteLabel = site === 'all' ? 'ทุกไซต์' : `ไซต์ ${site}`
       const html = buildPrintHTML({
         sections: printSections,
         report: data,
@@ -1572,10 +1572,10 @@ export function MonthlyReport() {
       setTimeout(() => window.print(), 50)
       setTimeout(() => setPrintHtml(''), 1000)
       setPrintDialogOpen(false)
-      toast.success('ClosefrontdifferentPrint…')
+      toast.success('กำลังเปิดหน้าพิมพ์…')
     } catch (err) {
       console.error('handlePrintReport', err)
-      toast.error('ClosefrontPrintNoSuccess')
+      toast.error('เปิดหน้าพิมพ์ไม่สำเร็จ')
     } finally {
       setPrintBusy(false)
     }
@@ -1594,10 +1594,10 @@ export function MonthlyReport() {
             <div>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <CalendarDays className="h-5 w-5 text-orange-500" />
-                Reportitemmonths
+                รายงานรายเดือน
               </CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                SummaryResultDoWorkitemmonths — Work Order, Stock, andDevice
+                สรุปผลการปฏิบัติงานรายเดือน — ใบงาน สต๊อก และอุปกรณ์
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -1625,7 +1625,7 @@ export function MonthlyReport() {
                     className="h-8 bg-orange-500 hover:bg-orange-600"
                   >
                     <Printer className="mr-1 h-3.5 w-3.5" />
-                    PrintReport
+                    พิมพ์รายงาน
                     <ChevronDown className="ml-1 h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -1634,7 +1634,7 @@ export function MonthlyReport() {
                   className="w-64"
                 >
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    SelectTypeReportatwillPrint
+                    เลือกประเภทรายงานที่จะพิมพ์
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -1643,9 +1643,9 @@ export function MonthlyReport() {
                   >
                     <FileText className="h-4 w-4 text-orange-500" />
                     <div className="flex flex-col">
-                      <span>ReportSummaryUsePaper</span>
+                      <span>รายงานสรุปการใช้กระดาษ</span>
                       <span className="text-[10px] text-muted-foreground">
-                        SummaryAmountPrintitemmonths
+                        สรุปจำนวนที่พิมพ์รายเดือน
                       </span>
                     </div>
                   </DropdownMenuItem>
@@ -1655,9 +1655,9 @@ export function MonthlyReport() {
                   >
                     <Layers className="h-4 w-4 text-indigo-500" />
                     <div className="flex flex-col">
-                      <span>ReportStatusDevice</span>
+                      <span>รายงานสถานะอุปกรณ์</span>
                       <span className="text-[10px] text-muted-foreground">
-                        ByStatus/Type/Site
+                        ตามสถานะ/ประเภท/ไซต์
                       </span>
                     </div>
                   </DropdownMenuItem>
@@ -1667,9 +1667,9 @@ export function MonthlyReport() {
                   >
                     <Wrench className="h-4 w-4 text-amber-500" />
                     <div className="flex flex-col">
-                      <span>ReportWork OrderRepair Request</span>
+                      <span>รายงานใบแจ้งซ่อม</span>
                       <span className="text-[10px] text-muted-foreground">
-                        Status/priorityUrgent/Technician
+                        สถานะ/ความเร่งด่วน/ช่าง
                       </span>
                     </div>
                   </DropdownMenuItem>
@@ -1679,9 +1679,9 @@ export function MonthlyReport() {
                   >
                     <Package className="h-4 w-4 text-emerald-500" />
                     <div className="flex flex-col">
-                      <span>ReportStock</span>
+                      <span>รายงานสต๊อก</span>
                       <span className="text-[10px] text-muted-foreground">
-                        levelStock + warnofRemainingless
+                        ระดับสต๊อก + เตือนคงเหลือต่ำกว่าขั้นต่ำ
                       </span>
                     </div>
                   </DropdownMenuItem>
@@ -1691,9 +1691,9 @@ export function MonthlyReport() {
                   >
                     <Gauge className="h-4 w-4 text-cyan-500" />
                     <div className="flex flex-col">
-                      <span>ReportMeter</span>
+                      <span>รายงานมิเตอร์</span>
                       <span className="text-[10px] text-muted-foreground">
-                        ReadMeterofmonths
+                        การจดมิเตอร์ของเดือน
                       </span>
                     </div>
                   </DropdownMenuItem>
@@ -1707,9 +1707,9 @@ export function MonthlyReport() {
                       💰
                     </Badge>
                     <div className="flex flex-col">
-                      <span>ReportSpecial (Approve)</span>
+                      <span>รายงานค่าใช้จ่ายพิเศษ (อนุมัติ)</span>
                       <span className="text-[10px] text-muted-foreground">
-                        OnlyWork OrderatHas cost — ByTechnician/Site
+                        เฉพาะใบงานที่มีค่าใช้จ่าย — แยกตามช่าง/ไซต์
                       </span>
                     </div>
                   </DropdownMenuItem>
@@ -1720,9 +1720,9 @@ export function MonthlyReport() {
                   >
                     <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
                     <div className="flex flex-col">
-                      <span>Export CSV</span>
+                      <span>ส่งออก CSV</span>
                       <span className="text-[10px] text-muted-foreground">
-                        DownloadDataReportCurrent
+                        ดาวน์โหลดข้อมูลรายงานปัจจุบัน
                       </span>
                     </div>
                   </DropdownMenuItem>
@@ -1735,10 +1735,10 @@ export function MonthlyReport() {
                 onClick={handlePrint}
                 disabled={!data}
                 className="h-8"
-                title="PrintfrontImmediate"
+                title="พิมพ์หน้าปัจจุบันทันที"
               >
                 <Printer className="mr-1 h-3.5 w-3.5" />
-                Printfront
+                พิมพ์หน้านี้
               </Button>
               {/* PrintwithTemplate — Task ID: FIX-1-2-EXPORT-PRINT */}
               <Button
@@ -1747,17 +1747,17 @@ export function MonthlyReport() {
                 onClick={() => setPrintTemplateOpen(true)}
                 disabled={!data}
                 className="h-8 border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
-                title="SelectTemplateBeforePrint"
+                title="เลือกเทมเพลตก่อนพิมพ์"
               >
                 <Printer className="mr-1 h-3.5 w-3.5" />
-                PrintwithTemplate
+                พิมพ์ด้วยเทมเพลต
               </Button>
               <Button
                 size="sm"
                 onClick={handleExportCSV}
                 disabled={!data}
                 className="h-8 bg-orange-500 hover:bg-orange-600"
-                title="Export CSV"
+                title="ส่งออก CSV"
               >
                 <Download className="mr-1 h-3.5 w-3.5" />
                 CSV
@@ -1775,7 +1775,7 @@ export function MonthlyReport() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="mr-month" className="text-xs">
-                months
+                เดือน
               </Label>
               <Input
                 id="mr-month"
@@ -1787,14 +1787,14 @@ export function MonthlyReport() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="mr-site" className="text-xs">
-                Site ((optional))
+                ไซต์ (ไม่บังคับ)
               </Label>
               <Select value={site} onValueChange={setSite}>
                 <SelectTrigger id="mr-site" className="h-9">
-                  <SelectValue placeholder="AllSite" />
+                  <SelectValue placeholder="ทุกไซต์" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">AllSite</SelectItem>
+                  <SelectItem value="all">ทุกไซต์</SelectItem>
                   {sites.map((s) => (
                     <SelectItem key={s.id} value={s.code}>
                       {s.name} ({s.code})
@@ -1804,16 +1804,16 @@ export function MonthlyReport() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">TypeReport</Label>
+              <Label className="text-xs">ประเภทรายงาน</Label>
               <Tabs
                 value={reportType}
                 onValueChange={(v) => setReportType(v as ReportType)}
               >
                 <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="all">All</TabsTrigger>
-                  <TabsTrigger value="work-order">Work Order</TabsTrigger>
-                  <TabsTrigger value="stock">Stock</TabsTrigger>
-                  <TabsTrigger value="devices">Device</TabsTrigger>
+                  <TabsTrigger value="all">ทั้งหมด</TabsTrigger>
+                  <TabsTrigger value="work-order">ใบงาน</TabsTrigger>
+                  <TabsTrigger value="stock">สต๊อก</TabsTrigger>
+                  <TabsTrigger value="devices">อุปกรณ์</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
@@ -1826,10 +1826,10 @@ export function MonthlyReport() {
               </Badge>
               <Badge variant="outline" className="gap-1">
                 <Building2 className="h-3 w-3" />
-                {site === 'all' ? 'AllSite' : `Site ${site}`}
+                {site === 'all' ? 'ทุกไซต์' : `ไซต์ ${site}`}
               </Badge>
               <span className="text-[11px]">
-                CreateWhen {data.generatedAt ? new Date(data.generatedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '—'}
+                สร้างเมื่อ {data.generatedAt ? new Date(data.generatedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '—'}
               </span>
             </div>
           )}
@@ -1843,7 +1843,7 @@ export function MonthlyReport() {
       ) : !data ? (
         <Card className="min-h-0 flex-1">
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            NoCanLoadReport
+            ไม่สามารถโหลดรายงานได้
           </CardContent>
         </Card>
       ) : (
@@ -1858,14 +1858,14 @@ export function MonthlyReport() {
             {wo && (
               <>
                 <SummaryCard
-                  title="Work OrderAll"
+                  title="ใบงานทั้งหมด"
                   value={String(wo.total)}
                   icon={<Wrench className="h-5 w-5" />}
                   accent="#f97316"
-                  hint={`months ${formatMonthLabel(data.month, lang)}`}
+                  hint={`เดือน ${formatMonthLabel(data.month, lang)}`}
                 />
                 <SummaryCard
-                  title="Done"
+                  title="เสร็จสิ้น"
                   value={String(wo.byStatus.COMPLETED ?? 0)}
                   icon={<CheckCircle2 className="h-5 w-5" />}
                   accent="#10b981"
@@ -1875,71 +1875,71 @@ export function MonthlyReport() {
                           ((wo.byStatus.COMPLETED ?? 0) / wo.total) * 100,
                         )
                       : 0
-                  }% ofAll`}
+                  }% ของทั้งหมด`}
                 />
                 <SummaryCard
-                  title="Average"
+                  title="คะแนนเฉลี่ย"
                   value={wo.avgRating !== null ? wo.avgRating.toFixed(2) : '—'}
                   icon={<Star className="h-5 w-5" />}
                   accent="#f59e0b"
-                  hint="fromreview"
+                  hint="จากการรีวิว"
                 />
                 <SummaryCard
-                  title="TimeanswerAverage"
+                  title="เวลาตอบกลับเฉลี่ย"
                   value={data.meta.avgResponseTimeLabel}
                   icon={<RefreshCw className="h-5 w-5" />}
                   accent="#3b82f6"
-                  hint="Report → Assign"
+                  hint="แจ้ง → มอบหมาย"
                 />
               </>
             )}
             {stock && (
               <>
                 <SummaryCard
-                  title="Stock In"
+                  title="รับเข้า"
                   value={String(stock.totalIn)}
                   icon={<TrendingUp className="h-5 w-5" />}
                   accent="#10b981"
-                  hint="UnitTotal"
+                  hint="หน่วยรวม"
                 />
                 <SummaryCard
-                  title="Stock Out"
+                  title="จ่ายออก"
                   value={String(stock.totalOut)}
                   icon={<TrendingDown className="h-5 w-5" />}
                   accent="#ef4444"
-                  hint="UnitTotal"
+                  hint="หน่วยรวม"
                 />
                 <SummaryCard
-                  title="ValueStock"
+                  title="มูลค่าสต๊อก"
                   value={formatBaht(stock.totalValue, lang)}
                   icon={<Package className="h-5 w-5" />}
                   accent="#0d9488"
-                  hint="TotalAllSiteatSelect"
+                  hint="รวมทุกไซต์ที่เลือก"
                 />
                 <SummaryCard
-                  title="ofRemainingless"
+                  title="คงเหลือต่ำกว่าขั้นต่ำ"
                   value={String(stock.lowStockItems.length)}
                   icon={<AlertTriangle className="h-5 w-5" />}
                   accent="#f59e0b"
-                  hint="Lowper stepLow"
+                  hint="ต่ำกว่าขั้นต่ำ"
                 />
               </>
             )}
             {devices && (
               <>
                 <SummaryCard
-                  title="DeviceAll"
+                  title="อุปกรณ์ทั้งหมด"
                   value={String(devices.total)}
                   icon={<Cpu className="h-5 w-5" />}
                   accent="#6366f1"
-                  hint="inSystem"
+                  hint="ในระบบ"
                 />
                 <SummaryCard
-                  title="AddNew"
+                  title="เพิ่มใหม่"
                   value={String(devices.newDevices)}
                   icon={<TrendingUp className="h-5 w-5" />}
                   accent="#10b981"
-                  hint={`months ${formatMonthLabel(data.month, lang)}`}
+                  hint={`เดือน ${formatMonthLabel(data.month, lang)}`}
                 />
               </>
             )}
@@ -1951,7 +1951,7 @@ export function MonthlyReport() {
               <Card className="print-break-avoid shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">
-                    Work OrderbyStatus
+                    ใบงานตามสถานะ
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -2002,7 +2002,7 @@ export function MonthlyReport() {
               <Card className="print-break-avoid shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">
-                    Work OrderbypriorityUrgent
+                    ใบงานตามความเร่งด่วน
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -2052,12 +2052,12 @@ export function MonthlyReport() {
               <Card className="print-break-avoid shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">
-                    SubjectPopular (Top 10)
+                    หัวข้อยอดนิยม (Top 10)
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {wo.bySubject.length === 0 ? (
-                    <EmptyHint label="No dataSubjectinmonths" />
+                    <EmptyHint label="ไม่มีข้อมูลหัวข้อในเดือนที่เลือก" />
                   ) : (
                     <div className="h-64 w-full">
                       <VisibleResponsiveContainer width="100%" height="100%">
@@ -2114,12 +2114,12 @@ export function MonthlyReport() {
               <Card className="print-break-avoid shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">
-                    ResultWorkTechnician (Receive / Done)
+                    ผลงานช่าง (รับ / เสร็จ)
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {wo.byStaff.length === 0 ? (
-                    <EmptyHint label="No dataAssigninmonths" />
+                    <EmptyHint label="ไม่มีข้อมูลการมอบหมายในเดือนที่เลือก" />
                   ) : (
                     <div className="h-64 w-full">
                       <VisibleResponsiveContainer width="100%" height="100%">
@@ -2159,13 +2159,13 @@ export function MonthlyReport() {
                           <Legend wrapperStyle={{ fontSize: 12 }} />
                           <Bar
                             dataKey="count"
-                            name="Receive"
+                            name="รับ"
                             fill="#3b82f6"
                             radius={[6, 6, 0, 0]}
                           />
                           <Bar
                             dataKey="completed"
-                            name="Done"
+                            name="เสร็จ"
                             fill="#10b981"
                             radius={[6, 6, 0, 0]}
                           />
@@ -2184,7 +2184,7 @@ export function MonthlyReport() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Users className="h-4 w-4 text-orange-500" />
-                  TableResultWorkTechnician
+                  ตารางผลงานช่าง
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -2193,10 +2193,10 @@ export function MonthlyReport() {
                     <TableHeader className="sticky top-0 bg-muted">
                       <TableRow>
                         <TableHead>{t('role.staff')}</TableHead>
-                        <TableHead className="text-right">Receive</TableHead>
-                        <TableHead className="text-right">Done</TableHead>
+                        <TableHead className="text-right">รับ</TableHead>
+                        <TableHead className="text-right">เสร็จ</TableHead>
                         <TableHead className="text-right">
-                          %Done
+                          % เสร็จ
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -2233,21 +2233,21 @@ export function MonthlyReport() {
               <Card className="print-break-avoid shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">
-                    itemStockPopular (months)
+                    รายการสต๊อกยอดนิยม (รายเดือน)
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {stock.topItems.length === 0 ? (
-                    <EmptyHint label="StillNoneitemmotioninmonths" />
+                    <EmptyHint label="ยังไม่มีความเคลื่อนไหวในเดือนที่เลือก" />
                   ) : (
                     <div className="max-h-80 overflow-y-auto rounded-md border">
                       <Table>
                         <TableHeader className="sticky top-0 bg-muted">
                           <TableRow>
-                            <TableHead>Product</TableHead>
-                            <TableHead>Code</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead className="text-right">Quantity</TableHead>
+                            <TableHead>สินค้า</TableHead>
+                            <TableHead>รหัส</TableHead>
+                            <TableHead>ประเภท</TableHead>
+                            <TableHead className="text-right">จำนวน</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -2271,11 +2271,11 @@ export function MonthlyReport() {
                                   }
                                 >
                                   {t.type === 'IN'
-                                    ? 'Stock In'
+                                    ? 'รับเข้า'
                                     : t.type === 'OUT'
-                                      ? 'Stock Out'
+                                      ? 'จ่ายออก'
                                       : t.type === 'ADJUST'
-                                        ? 'Update'
+                                        ? 'ปรับปรุง'
                                         : t.type}
                                 </Badge>
                               </TableCell>
@@ -2295,22 +2295,22 @@ export function MonthlyReport() {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    itemofRemainingless
+                    รายการคงเหลือต่ำกว่าขั้นต่ำ
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {stock.lowStockItems.length === 0 ? (
-                    <EmptyHint label="NoneitematLowper stepLow — excellent!" />
+                    <EmptyHint label="ไม่มีรายการต่ำกว่าขั้นต่ำ — ยอดเยี่ยม!" />
                   ) : (
                     <div className="max-h-80 overflow-y-auto rounded-md border">
                       <Table>
                         <TableHeader className="sticky top-0 bg-muted">
                           <TableRow>
-                            <TableHead>Product</TableHead>
-                            <TableHead>Code</TableHead>
-                            <TableHead className="text-right">Remaining</TableHead>
-                            <TableHead className="text-right">stepLow</TableHead>
-                            <TableHead>Unit</TableHead>
+                            <TableHead>สินค้า</TableHead>
+                            <TableHead>รหัส</TableHead>
+                            <TableHead className="text-right">คงเหลือ</TableHead>
+                            <TableHead className="text-right">ขั้นต่ำ</TableHead>
+                            <TableHead>หน่วย</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -2348,7 +2348,7 @@ export function MonthlyReport() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Cpu className="h-4 w-4 text-indigo-500" />
-                  SummaryDevicebyStatus
+                  สรุปอุปกรณ์ตามสถานะ
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -2397,9 +2397,9 @@ export function MonthlyReport() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>{t('settings.col.status')}</TableHead>
-                          <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead className="text-right">จำนวน</TableHead>
                           <TableHead className="text-right">
-                            % ofAll
+                            % ของทั้งหมด
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -2439,7 +2439,7 @@ export function MonthlyReport() {
 
           {/* Footer note (print) */}
           <div className="print-only px-1 py-2 text-center text-[11px] text-muted-foreground">
-            ReportCreatebySystemManageAsset •{' '}
+            รายงานสร้างโดยระบบบริหารจัดการสินทรัพย์ •{' '}
             {new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
           </div>
         </motion.div>
@@ -2496,10 +2496,10 @@ export function MonthlyReport() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Printer className="h-5 w-5 text-orange-500" />
-              PrintReport
+              พิมพ์รายงาน
             </DialogTitle>
             <DialogDescription>
-              SelectSectionatMustTotalinReport Click “Print” forClosefrontdifferentPrint
+              เลือกส่วนที่ต้องการรวมในรายงาน กด “พิมพ์” เพื่อเปิดหน้าพิมพ์
             </DialogDescription>
           </DialogHeader>
 
@@ -2507,15 +2507,15 @@ export function MonthlyReport() {
             {data && (
               <div className="rounded-md border bg-muted/30 p-3 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">months:</span>
+                  <span className="text-muted-foreground">เดือน:</span>
                   <span className="font-medium">
                     {formatMonthLabel(data.month, lang)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-center justify-between">
-                  <span className="text-muted-foreground">Site:</span>
+                  <span className="text-muted-foreground">ไซต์:</span>
                   <span className="font-medium">
-                    {site === 'all' ? 'AllSite' : `Site ${site}`}
+                    {site === 'all' ? 'ทุกไซต์' : `ไซต์ ${site}`}
                   </span>
                 </div>
               </div>
@@ -2526,42 +2526,42 @@ export function MonthlyReport() {
                 checked={printSections.paper}
                 onToggle={() => togglePrintSection('paper')}
                 icon={<FileText className="h-4 w-4 text-orange-500" />}
-                title="ReportSummaryUsePaper"
-                desc="AmountPrintwhite/Color TotalandByunits (Top 20)"
+                title="รายงานสรุปการใช้กระดาษ"
+                desc="จำนวนพิมพ์ขาว-ดำ/สี รวมและแยกตามเครื่อง (Top 20)"
               />
               <PrintSectionCheckbox
                 checked={printSections.devices}
                 onToggle={() => togglePrintSection(t('devices.unit.device'))}
                 icon={<Layers className="h-4 w-4 text-indigo-500" />}
-                title="ReportStatusDevice"
-                desc="ByStatus/Type/Site"
+                title="รายงานสถานะอุปกรณ์"
+                desc="ตามสถานะ/ประเภท/ไซต์"
               />
               <PrintSectionCheckbox
                 checked={printSections.workOrders}
                 onToggle={() => togglePrintSection('workOrders')}
                 icon={<Wrench className="h-4 w-4 text-amber-500" />}
-                title="ReportWork OrderRepair Request"
-                desc="Status/priorityUrgent/ResultWorkTechnician/Subject"
+                title="รายงานใบแจ้งซ่อม"
+                desc="สถานะ/ความเร่งด่วน/ผลงานช่าง/หัวข้อ"
               />
               <PrintSectionCheckbox
                 checked={printSections.stock}
                 onToggle={() => togglePrintSection('stock')}
                 icon={<Package className="h-4 w-4 text-emerald-500" />}
-                title="ReportStock"
-                desc="itemPopular + ofRemainingless"
+                title="รายงานสต๊อก"
+                desc="รายการยอดนิยม + คงเหลือต่ำกว่าขั้นต่ำ"
               />
               <PrintSectionCheckbox
                 checked={printSections.meters}
                 onToggle={() => togglePrintSection('meters')}
                 icon={<Gauge className="h-4 w-4 text-cyan-500" />}
-                title="ReportMeter"
-                desc="itemReadMeterAllofmonths"
+                title="รายงานมิเตอร์"
+                desc="รายการจดมิเตอร์ทั้งหมดของเดือน"
               />
             </div>
 
             {!Object.values(printSections).some(Boolean) && (
               <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                ⚠ PleaseSelectLikeless 1 SectionatwillPrint
+                ⚠ กรุณาเลือกอย่างน้อย 1 ส่วนที่จะพิมพ์
               </p>
             )}
           </div>
@@ -2573,7 +2573,7 @@ export function MonthlyReport() {
               onClick={() => setPrintDialogOpen(false)}
               disabled={printBusy}
             >
-              Cancel
+              ยกเลิก
             </Button>
             <Button
               size="sm"
@@ -2584,12 +2584,12 @@ export function MonthlyReport() {
               {printBusy ? (
                 <>
                   <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />
-                  prepare…
+                  กำลังเตรียม…
                 </>
               ) : (
                 <>
                   <Printer className="mr-1 h-3.5 w-3.5" />
-                  Print
+                  พิมพ์
                 </>
               )}
             </Button>
@@ -2602,9 +2602,9 @@ export function MonthlyReport() {
         open={printTemplateOpen}
         onOpenChange={setPrintTemplateOpen}
         templateType="work-order"
-        actionLabel="Print"
+        actionLabel="พิมพ์"
         onSelect={(template) => {
-          toast.success(`SelectTemplate: ${template.name}`)
+          toast.success(`เลือกเทมเพลต: ${template.name}`)
           if (typeof window !== 'undefined') window.print()
         }}
       />
