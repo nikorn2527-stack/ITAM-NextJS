@@ -1032,9 +1032,10 @@ export function DevicesPage() {
     openAddRef.current = () => {
       setForm({ ...EMPTY_FORM })
       nameManuallyEditedRef.current = false
+      assetCodeManuallyEditedRef.current = false
       setDialogOpen(true)
-      // Auto-generate the next assetCode continuing from the latest integer
-      // (the legacy Apps Script assigned sequential integers 1, 2, 3 …).
+      // Auto-generate the next assetCode from the active NumberingScheme
+      // (e.g. 001-201-2569-00001) or the legacy integer sequence.
       // Best-effort — if the API call fails, the user can still type a code.
       void fetchNextAssetCode()
     }
@@ -1043,26 +1044,60 @@ export function DevicesPage() {
     openAddRef.current?.()
   }
 
-  // ── Auto-generate assetCode (continuing from latest) ──
+  // ── Re-generate assetCode when the numbering context changes ──
+  // While CREATING a device, picking a type/site/purchase-date changes the
+  // category codes + year that feed the Flexible Numbering Engine. We
+  // silently refresh the generated code unless the user typed one manually.
+  const assetCodeManuallyEditedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!dialogOpen || form.id) return
+    if (assetCodeManuallyEditedRef.current) return
+    const t = setTimeout(() => {
+      void fetchNextAssetCode({ force: true })
+    }, 350)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, form.type, form.site, form.purchaseDate])
+
+  // ── Auto-generate assetCode (Numbering Engine / legacy) ──
   // Calls /api/devices/next-asset-code and fills the field on Add New.
-  // Only auto-fills when the field is empty (CREATE only).
+  // With an active NumberingScheme the code is built from the FORM context
+  // (type → category codes, purchase year, site) e.g. 001-201-2569-00001.
+  // Only auto-fills when the field is empty (CREATE only) — the Sparkles
+  // button explicitly re-runs it with the current context.
   const generatingAssetCodeRef = React.useRef(false)
-  const fetchNextAssetCode = React.useCallback(async () => {
-    if (generatingAssetCodeRef.current) return
-    generatingAssetCodeRef.current = true
-    try {
-      const res = await fetch('/api/devices/next-asset-code', { headers: authHeaders() })
-      if (!res.ok) return
-      const j = (await res.json()) as { code?: string | null; next?: number }
-      if (j.code) {
-        setForm((prev) =>
-          prev.assetCode ? prev : { ...prev, assetCode: j.code ?? '' },
+  const fetchNextAssetCode = React.useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (generatingAssetCodeRef.current) return
+      generatingAssetCodeRef.current = true
+      try {
+        const params = new URLSearchParams()
+        if (form.type) params.set('type', form.type)
+        if (form.site) params.set('site', form.site)
+        if (form.departmentCode) params.set('departmentCode', form.departmentCode)
+        if (form.purchaseDate) params.set('purchaseDate', form.purchaseDate)
+        const qs = params.toString()
+        const res = await fetch(
+          `/api/devices/next-asset-code${qs ? `?${qs}` : ''}`,
+          { headers: authHeaders() },
         )
+        if (!res.ok) return
+        const j = (await res.json()) as { code?: string | null }
+        if (j.code) {
+          if (opts?.force) {
+            setForm((prev) => ({ ...prev, assetCode: j.code ?? '' }))
+          } else {
+            setForm((prev) =>
+              prev.assetCode ? prev : { ...prev, assetCode: j.code ?? '' },
+            )
+          }
+        }
+      } catch (err) { console.error('[devices-page]', err) } finally {
+        generatingAssetCodeRef.current = false
       }
-    } catch (err) { console.error('[devices-page]', err) } finally {
-      generatingAssetCodeRef.current = false
-    }
-  }, [])
+    },
+    [form.type, form.site, form.departmentCode, form.purchaseDate],
+  )
 
   async function openEdit(d: Device) {
     // The list query intentionally omits detail-only fields. Load the full
@@ -2257,18 +2292,22 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         <Input
                           id="dev-assetCode"
                           value={form.assetCode}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            assetCodeManuallyEditedRef.current = true
                             setForm({ ...form, assetCode: e.target.value })
-                          }
+                          }}
                           placeholder={t('devices.placeholder.asset_code')}
                           className="bg-amber-50/50 pl-8 font-mono dark:bg-amber-950/10"
                         />
                         <button
                           type="button"
                           tabIndex={-1}
-                          onClick={() => void fetchNextAssetCode()}
+                          onClick={() => {
+                            assetCodeManuallyEditedRef.current = false
+                            void fetchNextAssetCode({ force: true })
+                          }}
                           disabled={Boolean(form.id)}
-                          title={t('devices.hint.gen_next_asset_code')}
+                          title="สร้างเลขทะเบียนจากรูปแบบที่ตั้งไว้ (หมวดหมู่-ปีที่ซื้อ-ลำดับ)"
                           className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[#f97316] hover:bg-[#f97316]/10 disabled:opacity-40 dark:text-[#fb923c]"
                         >
                           <Sparkles className="h-3.5 w-3.5" />

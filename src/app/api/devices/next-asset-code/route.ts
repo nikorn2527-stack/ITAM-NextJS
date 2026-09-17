@@ -2,33 +2,47 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { previewNextNumber } from '@/lib/numbering-engine'
 
 /**
  * GET /api/devices/next-asset-code
  *
- * Returns the next sequential assetCode continuing from the latest one in the
- * Device table. The legacy Apps Script assigned integer-only asset codes
- * (1, 2, 3 … 999, 2378 …) — so the next code is `MAX(integerAssetCode) + 1`.
+ * พรีวิวเลขทะเบียนถัดไป (ไม่กินเลข):
+ *   1) ถ้ามี NumberingScheme (device) ที่ active → ใช้ Flexible Numbering Engine
+ *      รองรับ query: type, site, purchaseDate, departmentCode, categoryCode
+ *      เช่น /api/devices/next-asset-code?type=PRINTER&purchaseDate=2026-09-17
+ *      → 001-201-2569-00001
+ *   2) มิฉะนั้น fallback เป็นเลขลำดับเดิม (MAX integer assetCode + 1)
  *
- * Non-integer codes (e.g. "IT-PRT-001") are ignored — we only look at codes
- * that are pure integers (so we can keep the legacy sequence going).
- *
- * Optional query params:
- *   - prefix: a custom prefix to prepend (e.g. "IT-" → "IT-1000"). When
- *             omitted, returns just the integer string.
- *
- * Response: { code: string, next: number, max: number }
+ * Response: { code: string, engine?: 'numbering' | 'legacy', ... }
  */
 export async function GET(req: NextRequest) {
   const unavailable = await moduleUnavailableResponse('devices')
   if (unavailable) return unavailable
-
 
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
   try {
+    const { searchParams } = new URL(req.url)
+
+    // ── 1) Flexible Numbering Engine (ถ้ามี scheme ที่ active) ──
+    const numberingCode = await previewNextNumber('device', {
+      type: searchParams.get('type'),
+      site: searchParams.get('site'),
+      purchaseDate: searchParams.get('purchaseDate'),
+      departmentCode: searchParams.get('departmentCode'),
+      categoryCode: searchParams.get('categoryCode'),
+    })
+    if (numberingCode) {
+      return NextResponse.json({
+        code: numberingCode,
+        engine: 'numbering',
+      })
+    }
+
+    // ── 2) Legacy: MAX(integerAssetCode) + 1 ──
     // Fetch every assetCode in the Device table and find the max integer.
     // We avoid a raw SQL CAST because some codes are non-numeric and would
     // throw. Client-side parsing is O(N) but N is bounded (~3k devices).
@@ -42,7 +56,6 @@ export async function GET(req: NextRequest) {
     }
     const next = max + 1
 
-    const { searchParams } = new URL(req.url)
     const prefix = (searchParams.get('prefix') ?? '').trim()
     const code = prefix
       ? `${prefix}${String(next).padStart(4, '0')}`
@@ -53,6 +66,7 @@ export async function GET(req: NextRequest) {
       next,
       max,
       prefix: prefix || null,
+      engine: 'legacy',
     })
   } catch (err) {
     console.error('GET /api/devices/next-asset-code', err)

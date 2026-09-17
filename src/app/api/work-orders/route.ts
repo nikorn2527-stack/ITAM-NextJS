@@ -16,6 +16,7 @@ import {
   generateWoNumberFromPattern,
   ensureDefaultWoPatterns,
 } from '@/lib/wo-number-pattern'
+import { allocateNextNumber } from '@/lib/numbering-engine'
 
 // Allowed status values
 const VALID_STATUSES = new Set([
@@ -74,6 +75,21 @@ async function logAudit(
  *      Falls back to WO-YYYYMMDD-NNN if no PPIT numbers exist (new system).
  */
 async function generateWoNumber(): Promise<string | null> {
+  // ── 0. Flexible Numbering Engine (ตั้งค่า → เลขใบงาน แบบใหม่) ──
+  // ถ้าผู้ดูแลเปิดใช้ NumberingScheme (docType='work-order') ให้ใช้ engine
+  // นี้ก่อน — รองรับหมวดหมู่/ปี พ.ศ./รีเซ็ตรายปี เช่น WO-69-0001
+  const engineNumber = await allocateNextNumber('work-order', {
+    site: null,
+  }).catch(() => null)
+  if (engineNumber) {
+    // ตรวจซ้ำกับ id เดิม (id = woNumber ในระบบนี้)
+    const exists = await db.workOrder.findUnique({
+      where: { id: engineNumber },
+      select: { id: true },
+    })
+    if (!exists) return engineNumber
+  }
+
   // ── 1. Try the active WoNumberPattern from the settings DB ──
   await ensureDefaultWoPatterns().catch(() => {})
   const activePattern = await getActiveWoPattern().catch(() => null)

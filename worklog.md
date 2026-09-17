@@ -23309,3 +23309,40 @@ Work Log:
 
 Stage Summary:
 - stock-page fully re-localized; tsc clean; lint 0 errors
+
+---
+Task ID: FEATURE-2026-09-17-H
+Agent: orchestrator (direct session)
+Task: ระบบเลขทะเบียน/เลขเอกสารแบบยืดหยุ่น (Flexible Numbering Engine) — ตามคำขอผู้ใช้: กำหนดเลขจากหมวดหมู่ + ปีที่ซื้อ + เลขลำดับ เช่น 001-201-2569-00001 ขยายรูปแบบได้ไม่จำกัด + จัดการรหัสหมวดหมู่ง่าย + ใช้ได้กับทุกเอกสาร (ไม่ใช่เฉพาะอุปกรณ์) + กู้คืนโปรเจกต์หลัง sandbox ถูกรีเซ็ต
+
+Work Log:
+- ⚠️ ENVIRONMENT RESET: sandbox ถูกรีเซ็ตเป็น template ใหม่ระหว่าง session — โค้ด/DB/git ทั้งหมดหาย (เหลือแค่โฟลเดอร์ upload/ ที่เป็น volume แยก) กู้คืนโดย clone จาก https://github.com/nikorn2527-stack/ITAM-NextJS.git (public) ที่ commit f141075 + bun install + db:push + seed-all 9/9 (ครั้งนี้ผ่านทั้งหมดรวม seed-material-cost) + seed-real-data + seed-site-attributes-demo — ระบบกลับมาใช้งานครบ (admin/test1234 + demo_admin/demo123)
+- PRISMA SCHEMA: เพิ่ม 3 โมเดล — NumberingScheme (docType/pattern/prefix/resetPolicy/isActive), NumberSequence (schemeId+scopeKey+period unique, atomic lastValue), CategoryCode (docType/code/label/parentCode/matchKey — ต้นไม้หมวดใหญ่→หมวดย่อย พร้อมคีย์จับคู่กับ device.type)
+- ENGINE (src/lib/numbering-engine.ts): token 12 ชนิด {cat1:3} {cat2:3} {cat} {yearBE:4} {yearBE:2} {year:4} {month:2} {site} {dept} {type} {prefix} {seq:N} — resolvePattern แยก scopeKey (ส่วนไม่มี seq), allocateSeq atomic ผ่าน $transaction upsert+increment พร้อม retry P2002, peekNextSeq สำหรับ preview ไม่กินเลข, resolveCategory เดินต้นไม้หมวดจาก matchKey (case-insensitive) ปีมาจาก purchaseDate (+543 สำหรับ พ.ศ.) — ทดสอบ engine ตรงๆ: PRINTER→001-201-2569-00001,00002,00003 / COMPUTER→002-101-... / ปี 2568 แยก scope / รีเซ็ตรายปีทำงาน
+- API 6 routes ใหม่: /api/numbering/schemes (GET+POST), schemes/[id] (PATCH+DELETE ป้องกันลบตัว active), schemes/[id]/activate (transaction), /api/numbering/preview, /api/numbering/categories (GET+POST), categories/[id] (PATCH+DELETE — ลบแม่แล้วลูกขึ้นเป็นหมวดใหญ่, เปลี่ยน code แล้วอัปเดต parentCode ลูกๆ)
+- /api/devices/next-asset-code: ใช้ engine ก่อน (รับ query type/site/purchaseDate/departmentCode) ถ้าไม่มี scheme ที่ active ค่อย fallback เป็น legacy MAX-int
+- POST /api/devices: (1) assetCode ว่าง → allocate อัตโนมัติ (2) sync-preview: ถ้ารหัสที่ส่งมา === พรีวิวปัจจุบัน (แปลว่ามาจาก auto-fill) → แทนที่ด้วยการ allocate แบบ atomic เพื่อกันเลขซ้ำ (3) retry-on-P2002 5 รอบ ขอเลขใหม่อัตโนมัติ ถ้าผู้ใช้พิมพ์เองและชน → 409 พร้อมข้อความไทยชัดเจน
+- POST /api/work-orders: generateWoNumber เช็ค NumberingScheme('work-order') ก่อน (พร้อมตรวจ id ซ้ำ) แล้วค่อย fallback ไป WoNumberPattern เดิม → PPIT legacy — ไม่ทำลายระบบเดิม
+- UI (src/components/itam/numbering-schemes-tab.tsx ~700 บรรทัด): แทนที่ AssetPatternTab + WoPatternTab — การ์ด scheme พร้อม pattern + ตัวอย่างจากหมวดจริง + ปุ่ม "ใช้รูปแบบนี้"/แก้ไข/ลบ, dialog สร้าง/แก้ มี chip-builder คลิกแทรก token 12 ชนิด (สีส้มเน้นตัวสำคัญ) + ปุ่มตัวคั่น -_/. + ตรวจ unknown token + บังคับมี {seq} + dropdown ทดสอบกับประเภทจริง + พรีวิวสด gradient ส้ม, ส่วนจัดการหมวดหมู่ (tree: หมวดใหญ่/ย่อย + badge matchKey + เพิ่ม/แก้/ลบ ผ่าน dialog)
+- DEVICES PAGE: fetchNextAssetCode ส่ง context จากฟอร์ม (type/site/purchaseDate/departmentCode), auto-refresh เลขเมื่อเปลี่ยน type/site/purchaseDate ระหว่างสร้าง (debounce 350ms, เคารพ manual edit ผู้ใช้ — assetCodeManuallyEditedRef), ปุ่ม Sparkles บังคับ regenerate
+- SEED (scripts/seed-numbering-defaults.ts): หมวด 10 แถว (001 อุปกรณ์สำนักงาน/002 ไอที/003 เครือข่าย + 201 ปรินเตอร์ AIO[PRINTER]/202 ถ่ายเอกสาร[COPIER]/203 สแกนเนอร์[SCANNER]/101 คอมพิวเตอร์[COMPUTER]/102 โน้ตบุ๊ค/103 จอ/301 สวิตช์) + scheme อุปกรณ์ 3 แบบ (active: หมวด-หมวดย่อย-ปีพ.ศ.-ลำดับ) + WO 1 แบบ (ไม่ active)
+- BUG FIX (โบนัส): /api/reports/asset-register พังทั้ง route ด้วย ReferenceError: lang is not defined (ตัวแปรตกค้างจาก refactor) — เพิ่ม const lang='th' → ตรวจแล้ว 200 OK
+- BUG FIX (UI): SchemeDialog/CategoryDialog ลืมห่อ <Dialog> root → DialogPortal must be used within Dialog — แก้แล้ว + แก้ clientPreview ให้เคารพจำนวนหลัก {seq:N} (WO-69-0001 ไม่ใช่ 00001)
+
+Verification (agent-browser e2e):
+- หน้าตั้งค่า → รูปแบบเลขทะเบียน: 3 การ์ด + ตัว active แสดงตัวอย่าง 001-201-2569-00001 + ต้นไม้หมวดหมู่ครบ 10 แถว
+- สร้าง scheme ใหม่ผ่าน dialog (chip builder + พรีวิว) → toast สำเร็จ → ลบได้
+- ฟอร์มเพิ่มอุปกรณ์: เปิด dialog → เลข 000-000-2569-00001 → เลือก type PRINTER → **เปลี่ยนเป็น 001-201-2569-00001 อัตโนมัติ** → กรอก brand/model ชื่อ auto → เลือกสาขา UDH → บันทึก → POST 201 + แถวแรกในตารางแสดง 001-201-2569-00001 ✓
+- บันทึก PRINTER ตัวที่สอง: preview ยังบอก 00001 แต่ server ตรวจพบซ้ำ → จัดสรรใหม่เป็น **001-201-2569-00002** อัตโนมัติ (sequence ไปถึง 2) ✓ (ทดสอบเสร็จลบข้อมูลทดสอบ + เคลียร์ sequence แล้ว)
+- แท็บเลขใบงาน: การ์ด WO-69-0001 + คำอธิบาย "ยังไม่เปิดใช้งาน ระบบยังใช้เลขใบงานเดิม"
+- tsc --noEmit: 0 errors ในไฟล์ใหม่ทั้งหมด (errors ที่เหลือเป็น pre-existing เท่านั้น — ยืนยันด้วย git stash เทียบ) | lint: 0 errors, 116 warnings (devices-page 8 เท่าเดิม, +1 จากไฟล์ใหม่)
+- console หลังเดิน 3 หน้า: ไม่มี JS error
+
+Stage Summary:
+- ระบบเลขทะเบียนแบบยืดหยุ่นครบวงจร: กำหนดรูปแบบได้ไม่จำกัดจากส่วนประกอบ 12 ชนิด ตัวอย่างที่ขอ (001-201-2569-00001) ทำงานจริง end-to-end ตั้งแต่เลือกประเภทในฟอร์มจนบันทึกลง DB
+- ใช้ได้กับทุก docType (device ใช้งานแล้ว, work-order พร้อมเปิดใช้) — ขยายต่อได้เช่น PO/stock
+- การจัดสรรเลข atomic กันซ้ำแม้มีผู้ใช้หลายคนบันทึกพร้อมกัน + preview ไม่กินเลข
+- หมวดหมู่+รหัสจัดการในหน้าเดียวกัน (เพิ่ม/แก้/ลบ/จัดโครงสร้างแม่-ลูก)
+- โปรเจกต์ถูกกู้คืนจาก GitHub หลัง sandbox reset — ทุกอย่างกลับมาเหมือนเดิม (seed ผ่าน 9/9)
+- Known issues ที่ยังค้าง: pre-existing tsc errors (~10 จุดใน legacy scripts/.next types), 116 lint warnings, ยังไม่ได้ wire WO form ให้เห็นพรีวิวเลขก่อนบันทึก (สร้างจริงใช้ engine แล้วถ้าเปิด scheme)
+- Commit: H (push ไป main ทันทีหลังบันทึก worklog นี้)

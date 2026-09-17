@@ -7,6 +7,7 @@ import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag, demoFilter } from '@/lib/demo-mode'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { getOrgScope } from '@/lib/org-scope'
+import { allocateNextNumber, previewNextNumber } from '@/lib/numbering-engine'
 import {
   clampPageAndLimit,
   buildPaginationMeta,
@@ -312,6 +313,20 @@ export async function POST(req: NextRequest) {
     // Apply defaults for optional fields that have sensible defaults
     if (!body.status) body.status = 'active'
     if (!body.site) body.site = 'HQ'
+
+    // ── Flexible Numbering Engine: สร้าง assetCode อัตโนมัติถ้าผู้ใช้ไม่กรอก ──
+    // ใช้รูปแบบจาก ตั้งค่า → รูปแบบเลขทะเบียน (เช่น 001-201-2569-00001)
+    // ปีมาจากวันที่ซื้อ (purchaseDate) ของเครื่องนี้
+    if (body.assetCode === undefined || body.assetCode === null || String(body.assetCode).trim() === '') {
+      const generated = await allocateNextNumber('device', {
+        type: body.type ?? null,
+        site: body.site ?? null,
+        purchaseDate: body.purchaseDate ?? null,
+        departmentCode: body.departmentCode ?? null,
+      })
+      if (generated) body.assetCode = generated
+    }
+
     const required = ['assetCode', 'name', 'brand', 'model', 'type']
     for (const k of required) {
       if (body[k] === undefined || body[k] === null || body[k] === '') {
@@ -347,49 +362,97 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const created = await db.device.create({
-      data: {
-        assetCode: String(body.assetCode).trim(),
-        name: String(body.name).trim(),
-        brand: String(body.brand).trim(),
-        model: String(body.model).trim(),
-        type: String(body.type).trim(),
-        serialNumber: optStr(body.serialNumber),
-        status: String(body.status).trim(),
-        site: targetSite,
-        assetSiteCode: optStr(body.assetSiteCode),
-        department: optStr(body.department),
-        departmentCode: optStr(body.departmentCode),
-        parentRef: optStr(body.parentRef),
-        displayLabel: optStr(body.displayLabel),
-        location: optStr(body.location),
-        building: optStr(body.building),
-        floor: optStr(body.floor),
-        room: optStr(body.room),
-        ip: optStr(body.ip),
-        mac: optStr(body.mac),
-        remoteId: optStr(body.remoteId),
-        purchaseDate: optStr(body.purchaseDate),
-        warrantyMonths: clampWarrantyMonths(body.warrantyMonths),
-        purchasePrice: optFloat(body.purchasePrice),
-        salvageValue: optFloat(body.salvageValue) ?? 0,
-        usefulLife: optInt(body.usefulLife),
-        warrantyEnd: optStr(body.warrantyEnd),
-        vendor: optStr(body.vendor),
-        contractNo: optStr(body.contractNo),
-        uninstallDate: optStr(body.uninstallDate),
-        meterRequired: optBool(body.meterRequired),
-        meterMode: optStr(body.meterMode),
-        costCenter: optStr(body.costCenter),
-        deviceGroup: optStr(body.deviceGroup),
-        remark: optStr(body.remark),
-        // ── Device Set fields (Task ID 9, Phase 2) ──
-        parentDeviceId: optStr(body.parentDeviceId),
-        setLabel: optStr(body.setLabel),
-        setPosition: optInt(body.setPosition),
-        ...demoTag(demo?.user ?? null),
-      },
-    })
+    // ── Flexible Numbering Engine: ซิงก์เลขกับ sequence counter ──
+    // ฟอร์มฝั่ง client เติม assetCode จาก "พรีวิว" (ไม่กินเลข) ดังนั้นตอน
+    // บันทึกจริงเราต้องจัดสรรเลขแบบ atomic ใหม่ เพื่อไม่ให้เลขซ้ำเมื่อมี
+    // การบันทึกพร้อมกัน หรือเมื่อผู้ใช้หลายคนเปิดฟอร์มพร้อมกัน
+    // เงื่อนไข: แทนที่เฉพาะเมื่อรหัสที่ส่งมา === พรีวิวปัจจุบัน (แปลว่ามาจาก
+    // auto-fill ไม่ใช่ผู้ใช้พิมพ์เอง) — ถ้าผู้ใช้พิมพ์เองจะใช้รหัสนั้นตรงๆ
+    const numberingCtx = {
+      type: body.type ?? null,
+      site: targetSite,
+      purchaseDate: body.purchaseDate ?? null,
+      departmentCode: body.departmentCode ?? null,
+    }
+    const previewNow = await previewNextNumber('device', numberingCtx).catch(() => null)
+    if (previewNow && String(body.assetCode).trim() === previewNow) {
+      const allocated = await allocateNextNumber('device', numberingCtx).catch(() => null)
+      if (allocated) body.assetCode = allocated
+    }
+
+    // สร้างพร้อม retry-on-P2002: ถ้ารหัสชนกับข้อมูลเดิม (เช่น import มาก่อน)
+    // และมี scheme ที่ active — ขอเลขใหม่แบบ atomic แล้วลองใหม่
+    let created: Awaited<ReturnType<typeof db.device.create>> | null = null
+    let lastDupCode: string | null = null
+    for (let attempt = 0; attempt < 5 && !created; attempt++) {
+      try {
+        created = await db.device.create({
+          data: {
+            assetCode: String(body.assetCode).trim(),
+            name: String(body.name).trim(),
+            brand: String(body.brand).trim(),
+            model: String(body.model).trim(),
+            type: String(body.type).trim(),
+            serialNumber: optStr(body.serialNumber),
+            status: String(body.status).trim(),
+            site: targetSite,
+            assetSiteCode: optStr(body.assetSiteCode),
+            department: optStr(body.department),
+            departmentCode: optStr(body.departmentCode),
+            parentRef: optStr(body.parentRef),
+            displayLabel: optStr(body.displayLabel),
+            location: optStr(body.location),
+            building: optStr(body.building),
+            floor: optStr(body.floor),
+            room: optStr(body.room),
+            ip: optStr(body.ip),
+            mac: optStr(body.mac),
+            remoteId: optStr(body.remoteId),
+            purchaseDate: optStr(body.purchaseDate),
+            warrantyMonths: clampWarrantyMonths(body.warrantyMonths),
+            purchasePrice: optFloat(body.purchasePrice),
+            salvageValue: optFloat(body.salvageValue) ?? 0,
+            usefulLife: optInt(body.usefulLife),
+            warrantyEnd: optStr(body.warrantyEnd),
+            vendor: optStr(body.vendor),
+            contractNo: optStr(body.contractNo),
+            uninstallDate: optStr(body.uninstallDate),
+            meterRequired: optBool(body.meterRequired),
+            meterMode: optStr(body.meterMode),
+            costCenter: optStr(body.costCenter),
+            deviceGroup: optStr(body.deviceGroup),
+            remark: optStr(body.remark),
+            // ── Device Set fields (Task ID 9, Phase 2) ──
+            parentDeviceId: optStr(body.parentDeviceId),
+            setLabel: optStr(body.setLabel),
+            setPosition: optInt(body.setPosition),
+            ...demoTag(demo?.user ?? null),
+          },
+        })
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        if (code === 'P2002') {
+          lastDupCode = String(body.assetCode).trim()
+          // ขอเลขใหม่จาก engine (เฉพาะเมื่อมี scheme ที่ active)
+          const fresh = await allocateNextNumber('device', numberingCtx).catch(() => null)
+          if (fresh && fresh !== body.assetCode) {
+            body.assetCode = fresh
+            continue
+          }
+          return NextResponse.json(
+            { error: `รหัส "${lastDupCode}" ถูกใช้แล้ว — กรุณาใช้รหัสอื่น` },
+            { status: 409 },
+          )
+        }
+        throw err
+      }
+    }
+    if (!created) {
+      return NextResponse.json(
+        { error: `รหัส "${lastDupCode}" ถูกใช้แล้ว — กรุณาใช้รหัสอื่น` },
+        { status: 409 },
+      )
+    }
     await logAudit(
       'CREATE',
       'Device',

@@ -1379,6 +1379,64 @@ model WoNumberPattern {
 }
 
 // ============================================================
+// 23c) Flexible Numbering Engine — ระบบเลขทะเบียน/เลขเอกสารแบบยืดหยุ่น
+// ============================================================
+// กำหนดรูปแบบเลขได้จากหลายส่วนประกอบ เช่น
+//   {cat1:3}-{cat2:3}-{yearBE:4}-{seq:5}  → 001-201-2569-00001
+//   {prefix}-{yearBE:2}-{seq:4}           → WO-69-0001
+// ใช้ร่วมกันได้ทุกประเภทเอกสาร (docType): device, work-order, ...
+model NumberingScheme {
+  id          String   @id @default(cuid())
+  docType     String // 'device' | 'work-order' | ... (ขยายได้)
+  name        String // ชื่อรูปแบบ
+  pattern     String // รูปแบบ เช่น "{cat1:3}-{cat2:3}-{yearBE:4}-{seq:5}"
+  prefix      String? // ค่าของ {prefix}
+  description String?
+  resetPolicy String   @default("never") // never | yearly | monthly
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isDemo      Boolean  @default(false)
+
+  @@index([docType, isActive])
+}
+
+// เลขลำดับต่อ scope — อัปเดตแบบ atomic ผ่าน transaction
+// scopeKey คือส่วนของเลขที่ไม่ใช่ {seq} เช่น "001-201-2569"
+model NumberSequence {
+  id        String   @id @default(cuid())
+  schemeId  String
+  scopeKey  String   @default("")
+  period    String   @default("") // "" = ไม่รีเซ็ต | "2026" = รายปี | "2026-09" = รายเดือน
+  lastValue Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([schemeId, scopeKey, period])
+  @@index([schemeId])
+}
+
+// ต้นไม้หมวดหมู่ + รหัสหมวด — ใช้กับ token {cat1}/{cat2}
+// โครงสร้าง: หมวดใหญ่ (parentCode = null) → หมวดย่อย (parentCode = รหัสแม่)
+// matchKey = คีย์จับคู่กับข้อมูล เช่น device.type = 'PRINTER'
+model CategoryCode {
+  id         String   @id @default(cuid())
+  docType    String   @default("device")
+  code       String // "001", "201"
+  label      String // ชื่อหมวดหมู่ (ไทย)
+  parentCode String? // รหัสหมวดแม่ (null = หมวดใหญ่)
+  matchKey   String? // คีย์จับคู่ เช่น PRINTER
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  isDemo     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([docType, code])
+  @@index([docType, active])
+  @@index([docType, matchKey])
+}
+
+// ============================================================
 // 24) OrganizationProfile — โปรไฟล์องค์กร
 // ============================================================
 model OrganizationProfile {

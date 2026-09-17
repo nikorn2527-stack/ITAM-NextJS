@@ -30,6 +30,7 @@ import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
 import { AssetPatternTab, WoPatternTab } from './settings-page-v2'
+import { NumberingSchemesTab } from './numbering-schemes-tab'
 import { NotificationTemplatesSection } from './notification-templates-section'
 import { NotificationLogSection } from './notification-log-section'
 import { PendingUsersSection } from './pending-users-section'
@@ -784,9 +785,9 @@ export function ItamSettings() {
 
       {tab === 'customize' && <AppCustomizeTab />}
 
-      {tab === 'number-patterns' && <AssetPatternTab />}
+      {tab === 'number-patterns' && <NumberingSchemesTab docType="device" title="รูปแบบเลขทะเบียนสินทรัพย์" subtitle="ประกอบรูปแบบเลขจากหมวดหมู่ ปีที่ซื้อ เลขลำดับ และอื่นๆ — ใช้งานทันทีทั้งฟอร์มเพิ่มอุปกรณ์และ API" />}
 
-      {tab === 'wo-patterns' && <WoPatternTab />}
+      {tab === 'wo-patterns' && <NumberingSchemesTab docType="work-order" title="รูปแบบเลขใบงาน" subtitle="ประกอบรูปแบบเลขใบงานจากหมวดหมู่ ปี เลขลำดับ — เปิดใช้งานเพื่อให้ระบบสร้างเลขใบงานตามรูปแบบนี้" />}
 
       {tab === 'demo' && <DemoManagementSection />}
 

@@ -69,6 +69,14 @@ function yearsBetween(purchaseDate: string | null): number {
   }
 }
 
+/**
+ * FIX (2026-09-17 H): `lang` ถูกอ้างถึงใน 4 จุดแต่ไม่เคยถูกประกาศ
+ * (ตกค้างจากการ refactor) ทำให้ GET /api/reports/asset-register
+ * พังทั้ง route ด้วย ReferenceError: lang is not defined.
+ * รายงานนี้เป็นภาษาไทยล้วน (html lang="th") — จึงตั้งค่าเป็น 'th' ตายตัว
+ */
+const lang = 'th'
+
 function formatThaiDate(iso: string | null): string {
   if (!iso) return ''
   try {
