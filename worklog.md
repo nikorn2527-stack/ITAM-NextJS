@@ -23346,3 +23346,28 @@ Stage Summary:
 - โปรเจกต์ถูกกู้คืนจาก GitHub หลัง sandbox reset — ทุกอย่างกลับมาเหมือนเดิม (seed ผ่าน 9/9)
 - Known issues ที่ยังค้าง: pre-existing tsc errors (~10 จุดใน legacy scripts/.next types), 116 lint warnings, ยังไม่ได้ wire WO form ให้เห็นพรีวิวเลขก่อนบันทึก (สร้างจริงใช้ engine แล้วถ้าเปิด scheme)
 - Commit: H (push ไป main ทันทีหลังบันทึก worklog นี้)
+
+---
+Task ID: FEATURE-2026-09-17-H2
+Agent: orchestrator (direct session — resume after context overflow)
+Task: ปิดงาน Flexible Numbering Engine รอบ H — push commit ที่ตกค้าง + กู้คืน active scheme ที่ถูกสลับไประหว่าง e2e ของรอบก่อน + smoke verify ซ้ำทั้งหมด
+
+Work Log:
+- ผู้ใช้ส่ง GitHub PAT ใหม่ → ตั้ง remote URL พร้อม credential + fetch สำเร็จ
+- ตรวจพบ commit c51e1df (Flexible Numbering Engine รอบ H) ตกค้างไม่ได้ push (session ก่อนหมด context ก่อน push) → push แล้ว f141075..c51e1df ขึ้น origin/main
+- SMOKE VERIFY (agent-browser): login admin สำเร็จ → ตั้งค่าระบบ → แท็บ "รูปแบบเลขทะเบียน" แสดง 3 การ์ด scheme + ต้นไม้หมวดหมู่ครบ
+- พบความผิดปกติ: ฟอร์มเพิ่มอุปกรณ์แสดงเลข ASSET-00001 แทนที่จะเป็น 000-000-2569-00001 — ตรวจ DB พบ active scheme ถูกสลับเป็น "แบบเรียบง่าย (คำนำหน้า-ลำดับ)" ({prefix}-{seq:5}) ซึ่งผิดจาก seed default (รอบก่อน e2e ทดสอบ activation flow แล้วไม่ได้ restore)
+- ตรวจโค้ด: POST /api/numbering/schemes สร้างใหม่เป็น isActive:false เสมอ (ไม่ใช่ code bug) — ensureDefaultSchemes ทำงานเฉพาะตอน count=0 — สรุปเป็น data state issue ล้วน
+- FIX: transaction ปิด active ทั้งหมด + เปิด "หมวดหมู่–หมวดย่อย–ปี พ.ศ.–ลำดับ" ({cat1:3}-{cat2:3}-{yearBE:4}-{seq:5}) อีกครั้ง + ยืนยัน NumberSequence ว่าง (ไม่มี sequence ค้างจาก scheme เดิม)
+- VERIFY หลังแก้:
+  - API: type=PRINTER → 001-201-2569-00001 | type=COMPUTER → 002-101-2569-00001 | ไม่ส่ง type → 000-000-2569-00001 (engine:"numbering" ทุกกรณี)
+  - UI e2e: เปิดฟอร์มเพิ่มอุปกรณ์ → กดปุ่ม Sparkles regenerate → 000-000-2569-00001 → พิมพ์ PRINTER ในช่องประเภท → **เลขเปลี่ยนเป็น 001-201-2569-00001 อัตโนมัติ** ✓ → ยกเลิก (ไม่บันทึก ไม่เกิดข้อมูล test)
+  - Console: 0 errors ตลอดการเดิน (login + settings + numbering tab + device form)
+- tsc --noEmit: 0 errors | lint: 0 errors / 116 warnings (baseline เท่าเดิม)
+- ลบสคริปต์ชั่วคราว .zscripts/tmp/* แล้ว — working tree สะอาด
+- หมายเหตุ cron: job 388161 (webDevReview ทุก 15 นาที) ยังทำงานอยู่ — ไม่ต้องสร้างซ้ำ
+
+Stage Summary:
+- commit c51e1df push ขึ้น origin/main สำเร็จ (Flexible Numbering Engine ครบทุกอย่างบน GitHub แล้ว)
+- Active scheme กลับมาตรงตาม default ที่ผู้ใช้ขอ (001-201-2569-00001) — ยืนยัน e2e อีกครั้งใน session ใหม่ ทั้ง API และ UI
+- ระบบพร้อมใช้งานเต็มรูปแบบ; known issues คงเดิมตามรอบ H (pre-existing tsc errors ใน legacy scripts, 116 lint warnings, WO form ยังไม่โชว์พรีวิวเลขก่อนบันทึก)
